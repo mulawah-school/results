@@ -11,8 +11,8 @@ body {
 }
 
 .box {
-  max-width: 420px;
-  margin: 40px auto;
+  max-width: 450px;
+  margin: 30px auto;
   background: white;
   padding: 20px;
   border-radius: 10px;
@@ -39,7 +39,13 @@ table {
 td, th {
   border: 1px solid #000;
   padding: 6px;
-  font-size: 12px;
+  font-size: 13px;
+  text-align: center;
+}
+
+h4 {
+  text-align: center;
+  margin-top: 15px;
 }
 
 @media print {
@@ -62,7 +68,7 @@ td, th {
 <body>
 
 <div class="box">
-  <h3>استخراج نتائج الطالب</h3>
+  <h3 style="text-align:center;">الاستعلام عن نتيجة الطالب</h3>
 
   <input type="text" id="civilId" placeholder="الرقم المدني"
     style="width:100%;padding:8px;" />
@@ -72,62 +78,65 @@ td, th {
   <button onclick="downloadPDF()">📄 تحميل PDF</button>
   <button onclick="printResult()">🖨️ طباعة</button>
 
-  <div id="result"></div>
+  <!-- ===== عرض النتيجة في HTML ===== -->
+  <div id="htmlResult" style="display:none;">
+    <h4>نتيجة الطالب</h4>
+
+    <p><b>اسم الطالب:</b> <span id="h_name"></span></p>
+    <p><b>الرقم المدني:</b> <span id="h_civil"></span></p>
+    <p><b>الصف:</b> <span id="h_grade"></span></p>
+
+    <table>
+      <tr><th>المادة</th><th>الدرجة</th></tr>
+      <tr><td>التربية الإسلامية</td><td id="h_islamic"></td></tr>
+      <tr><td>اللغة العربية</td><td id="h_arabic"></td></tr>
+      <tr><td>الرياضيات</td><td id="h_math"></td></tr>
+      <tr><td>العلوم</td><td id="h_science"></td></tr>
+      <tr><td>الدراسات الاجتماعية</td><td id="h_social"></td></tr>
+      <tr><td>المهارات الحياتية</td><td id="h_life"></td></tr>
+      <tr><td>تقنية المعلومات</td><td id="h_it"></td></tr>
+      <tr><td>الرياضة المدرسية</td><td id="h_sport"></td></tr>
+      <tr><td>الفنون التشكيلية</td><td id="h_art"></td></tr>
+      <tr><td>المهارات الموسيقية</td><td id="h_music"></td></tr>
+    </table>
+  </div>
+
 </div>
 
-<!-- ===== PDF TEMPLATE ===== -->
-<div id="pdfResult" style="display:none; direction:ltr; font-family:'Times New Roman';">
+<!-- ===== قالب PDF ===== -->
+<div id="pdfResult" style="display:none; direction:rtl; font-family:'Times New Roman';">
 
   <div style="text-align:center;border-bottom:2px solid #000;padding-bottom:10px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <div style="font-size:12px;text-align:left;">
-        SULTANATE OF OMAN<br>
-        MINISTRY OF EDUCATION
-      </div>
-
-      <img src="logo.png" style="height:60px;">
-
-      <div style="font-size:12px;text-align:right;">
-        سلطنة عمان<br>
-        وزارة التربية والتعليم
-      </div>
-    </div>
-
-    <h3>TRANSCRIPT OF STUDENT ATTAINMENT AT THE END OF THE SEMESTER</h3>
-    <div style="font-size:12px;">
-      ACADEMIC : 2025 / 2026 &nbsp;&nbsp; SEMESTER : First
-    </div>
+    <img src="logo.png" style="height:70px;"><br>
+    <b>سلطنة عمان<br>وزارة التربية والتعليم</b>
+    <h3>كشف درجات الطالب للفصل الدراسي</h3>
+    <div style="font-size:12px;">العام الدراسي: 2025 / 2026</div>
   </div>
 
   <table>
     <tr>
-      <td><b>STUDENT NAME</b></td><td id="pdfName"></td>
-      <td><b>CIVIL NO</b></td><td id="pdfCivil"></td>
+      <td><b>اسم الطالب</b></td><td id="pdfName"></td>
+      <td><b>الرقم المدني</b></td><td id="pdfCivil"></td>
     </tr>
     <tr>
-      <td><b>GRADE & CLASS</b></td><td id="pdfGrade"></td>
+      <td><b>الصف</b></td><td id="pdfGrade"></td>
       <td></td><td></td>
     </tr>
   </table>
 
   <table>
-    <tr><th>SUBJECT</th><th>MARK</th></tr>
-    <tr><td>Islamic Education</td><td id="m_islamic"></td></tr>
-    <tr><td>Arabic Language</td><td id="m_arabic"></td></tr>
-    <tr><td>Mathematics</td><td id="m_math"></td></tr>
-    <tr><td>Science</td><td id="m_science"></td></tr>
-    <tr><td>Social Studies</td><td id="m_social"></td></tr>
-    <tr><td>Life Skills</td><td id="m_life"></td></tr>
-    <tr><td>Information Technology</td><td id="m_it"></td></tr>
-    <tr><td>School Sports</td><td id="m_sport"></td></tr>
-    <tr><td>Arts</td><td id="m_art"></td></tr>
-    <tr><td>Musical Skills</td><td id="m_music"></td></tr>
+    <tr><th>المادة</th><th>الدرجة</th></tr>
+    <tr><td>التربية الإسلامية</td><td id="m_islamic"></td></tr>
+    <tr><td>اللغة العربية</td><td id="m_arabic"></td></tr>
+    <tr><td>الرياضيات</td><td id="m_math"></td></tr>
+    <tr><td>العلوم</td><td id="m_science"></td></tr>
+    <tr><td>الدراسات الاجتماعية</td><td id="m_social"></td></tr>
+    <tr><td>المهارات الحياتية</td><td id="m_life"></td></tr>
+    <tr><td>تقنية المعلومات</td><td id="m_it"></td></tr>
+    <tr><td>الرياضة المدرسية</td><td id="m_sport"></td></tr>
+    <tr><td>الفنون التشكيلية</td><td id="m_art"></td></tr>
+    <tr><td>المهارات الموسيقية</td><td id="m_music"></td></tr>
   </table>
-
-  <div style="margin-top:20px;font-size:12px;">
-    HEADMASTER
-    <span style="float:right;">DATE OF ISSUE : 2026/01/05</span>
-  </div>
 
 </div>
 
@@ -139,19 +148,36 @@ function getResult() {
   if (!civilId) return;
 
   const url =
-    "https://script.google.com/macros/s/AKfycbwTtNStgKnx5sU_IG-S3LdQWpIWcUOjKrXa3U_40oKyBTfDglsiKE3FASU1j2sIo-cE/exec?civilId="
+    "https://script.google.com/macros/s/AKfycbwMWhQZhd26RbgJASv_Y4jFemW3YACA2FzOckwEUJIehj6xs4gNRw1nn4HOCg7t81EVRw/exec?civilId="
     + civilId;
 
   fetch(url)
     .then(res => res.json())
     .then(data => {
       if (!data.found) {
-        result.innerHTML = "الرقم غير موجود";
+        alert("الرقم غير موجود");
         return;
       }
 
-      result.innerHTML = "تم جلب النتيجة بنجاح";
+      // إظهار النتيجة في HTML
+      htmlResult.style.display = "block";
 
+      h_name.innerText = data.name;
+      h_civil.innerText = data.civilId;
+      h_grade.innerText = data.grade;
+
+      h_islamic.innerText = data.islamic;
+      h_arabic.innerText = data.arabic;
+      h_math.innerText = data.math;
+      h_science.innerText = data.science;
+      h_social.innerText = data.social;
+      h_life.innerText = data.life;
+      h_it.innerText = data.it;
+      h_sport.innerText = data.sport;
+      h_art.innerText = data.art;
+      h_music.innerText = data.music;
+
+      // تعبئة PDF
       pdfName.innerText = data.name;
       pdfCivil.innerText = data.civilId;
       pdfGrade.innerText = data.grade;
@@ -172,8 +198,7 @@ function getResult() {
 function downloadPDF() {
   const el = document.getElementById("pdfResult");
   el.style.display = "block";
-
-  html2pdf().from(el).save("نتيجة.pdf").then(() => {
+  html2pdf().from(el).save("نتيجة_الطالب.pdf").then(() => {
     el.style.display = "none";
   });
 }
