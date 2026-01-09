@@ -1,45 +1,96 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8">
-  <title>استخراج نتائج الطلبة</title>
-  <style>
-    body { font-family: Arial; background: #f4f6f8; }
-    .box {
-      max-width: 420px;
-      margin: 80px auto;
-      background: white;
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 0 10px #ccc;
-    }
-    button {
-      width: 100%;
-      padding: 10px;
-      background: #0a7cff;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    table {
-      width: 100%;
-      margin-top: 15px;
-      border-collapse: collapse;
-    }
-    td {
-      border: 1px solid #ddd;
-      padding: 8px;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>استخراج نتائج الطلبة</title>
+
+<style>
+/* ===== إعدادات عامة ===== */
+body {
+  font-family: Arial, Tahoma, sans-serif;
+  background: #f4f6f8;
+  margin: 0;
+  padding: 0;
+}
+
+/* ===== الصندوق الرئيسي ===== */
+.box {
+  max-width: 95%;
+  margin: 20px auto;
+  background: white;
+  padding: 16px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+/* ===== العنوان ===== */
+.box h3 {
+  text-align: center;
+  margin-bottom: 15px;
+}
+
+/* ===== الإدخال ===== */
+input {
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  box-sizing: border-box;
+}
+
+/* ===== الأزرار ===== */
+button {
+  width: 100%;
+  padding: 14px;
+  margin-top: 10px;
+  font-size: 16px;
+  background: #0a7cff;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button:active {
+  background: #065fcc;
+}
+
+/* ===== النتيجة ===== */
+#result {
+  margin-top: 15px;
+}
+
+/* ===== جدول الدرجات ===== */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+td {
+  border: 1px solid #ddd;
+  padding: 10px;
+  font-size: 15px;
+}
+
+/* ===== تحسين الهاتف ===== */
+@media (max-width: 600px) {
+  td {
+    font-size: 14px;
+    padding: 8px;
+  }
+}
+</style>
 </head>
+
 <body>
 
 <div class="box">
   <h3>استخراج نتائج الطالب</h3>
 
-  <input type="text" id="civilId" placeholder="الرقم المدني" />
-  <br><br>
+  <input type="number" id="civilId" placeholder="الرقم المدني">
 
   <button onclick="getResult()">عرض النتيجة</button>
 
@@ -52,7 +103,7 @@ function getResult() {
 
   if (!civilId) {
     document.getElementById("result").innerHTML =
-      "<p style='color:red'>الرجاء إدخال الرقم المدني</p>";
+      "<p style='color:red;text-align:center'>الرجاء إدخال الرقم المدني</p>";
     return;
   }
 
@@ -65,7 +116,7 @@ function getResult() {
     .then(data => {
       if (!data.found) {
         document.getElementById("result").innerHTML =
-          "<p style='color:red'>الرقم غير موجود</p>";
+          "<p style='color:red;text-align:center'>الرقم غير موجود</p>";
         return;
       }
 
@@ -89,7 +140,7 @@ function getResult() {
     })
     .catch(err => {
       document.getElementById("result").innerHTML =
-        "<p style='color:red'>حدث خطأ في الاتصال</p>";
+        "<p style='color:red;text-align:center'>حدث خطأ في الاتصال</p>";
       console.error(err);
     });
 }
