@@ -37,9 +37,12 @@
 
 <div class="box">
   <h3>استخراج نتائج الطالب</h3>
+
   <input type="text" id="civilId" placeholder="الرقم المدني" />
   <br><br>
+
   <button onclick="getResult()">عرض النتيجة</button>
+
   <div id="result"></div>
 </div>
 
@@ -68,6 +71,8 @@ function getResult() {
 
       document.getElementById("result").innerHTML = `
         <p><b>اسم الطالب:</b> ${data.name}</p>
+        <p><b>الصف:</b> ${data.grade}</p>
+
         <table>
           <tr><td>التربية الإسلامية</td><td>${data.islamic}</td></tr>
           <tr><td>اللغة العربية</td><td>${data.arabic}</td></tr>
@@ -75,20 +80,4 @@ function getResult() {
           <tr><td>العلوم</td><td>${data.science}</td></tr>
           <tr><td>الدراسات الاجتماعية</td><td>${data.social}</td></tr>
           <tr><td>المهارات الحياتية</td><td>${data.life}</td></tr>
-          <tr><td>تقنية المعلومات</td><td>${data.it}</td></tr>
-          <tr><td>الرياضة المدرسية</td><td>${data.sport}</td></tr>
-          <tr><td>الفنون التشكيلية</td><td>${data.art}</td></tr>
-          <tr><td>المهارات الموسيقية</td><td>${data.music}</td></tr>
-        </table>
-      `;
-    })
-    .catch(err => {
-      document.getElementById("result").innerHTML =
-        "<p style='color:red'>حدث خطأ في الاتصال</p>";
-      console.error(err);
-    });
-}
-</script>
-
-</body>
-</html>
+          <tr><td>تقنية المعلومات</td><td>${data.it}</td>
