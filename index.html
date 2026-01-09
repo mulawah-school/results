@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>استخراج نتائج الطلبة</title>
+  <style>
+    body { font-family: Arial; background: #f4f6f8; }
+    .box {
+      max-width: 400px;
+      margin: 80px auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px #ccc;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background: #0a7cff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    table {
+      width: 100%;
+      margin-top: 15px;
+      border-collapse: collapse;
+    }
+    td {
+      border: 1px solid #ddd;
+      padding: 8px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="box">
+  <h3>استخراج نتائج الطالب</h3>
+  <input type="text" id="civilId" placeholder="الرقم المدني" />
+  <br><br>
+  <button onclick="getResult()">عرض النتيجة</button>
+  <div id="result"></div>
+</div>
+
+<script>
+function getResult() {
+  const civilId = document.getElementById("civilId").value;
+  const url = "PUT_WEB_APP_URL_HERE?civilId=" + civilId;
+
+  fetch(url)
+    .then(res => res.json())
+    .then(data => {
+      if (!data.found) {
+        document.getElementById("result").innerHTML =
+          "<p style='color:red'>الرقم غير موجود</p>";
+        return;
+      }
+
+      document.getElementById("result").innerHTML = `
+        <p><b>اسم الطالب:</b> ${data.name}</p>
+        <table>
+          <tr><td>عربي</td><td>${data.arabic}</td></tr>
+          <tr><td>رياضيات</td><td>${data.math}</td></tr>
+          <tr><td>علوم</td><td>${data.science}</td></tr>
+          <tr><td>إنجليزي</td><td>${data.english}</td></tr>
+          <tr><td><b>المجموع</b></td><td><b>${data.total}</b></td></tr>
+        </table>
+      `;
+    });
+}
+</script>
+
+</body>
+</html>
