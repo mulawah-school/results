@@ -6,50 +6,56 @@
 <title>استخراج نتائج الطلبة</title>
 
 <style>
-/* ===== إعدادات عامة ===== */
+/* ===== عام ===== */
 body {
   font-family: Arial, Tahoma, sans-serif;
-  background: #f4f6f8;
+  background: linear-gradient(180deg,#eef3f9,#f8fafc);
   margin: 0;
   padding: 0;
 }
 
-/* ===== الصندوق الرئيسي ===== */
+/* ===== الصندوق ===== */
 .box {
   max-width: 95%;
   margin: 20px auto;
-  background: white;
-  padding: 16px;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  background: #fff;
+  padding: 18px;
+  border-radius: 16px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.08);
 }
 
 /* ===== العنوان ===== */
-.box h3 {
+h3 {
   text-align: center;
   margin-bottom: 15px;
+  color: #0a7cff;
 }
 
 /* ===== الإدخال ===== */
 input {
   width: 100%;
-  padding: 12px;
+  padding: 14px;
   font-size: 16px;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid #ccc;
   box-sizing: border-box;
+  outline: none;
 }
 
-/* ===== الأزرار ===== */
+input:focus {
+  border-color: #0a7cff;
+}
+
+/* ===== زر ===== */
 button {
   width: 100%;
   padding: 14px;
-  margin-top: 10px;
+  margin-top: 12px;
   font-size: 16px;
   background: #0a7cff;
-  color: white;
+  color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
 }
 
@@ -57,30 +63,48 @@ button:active {
   background: #065fcc;
 }
 
-/* ===== النتيجة ===== */
-#result {
+/* ===== معلومات الطالب ===== */
+.student-info {
+  background: #f1f6ff;
+  border-radius: 12px;
+  padding: 12px;
   margin-top: 15px;
 }
 
-/* ===== جدول الدرجات ===== */
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 10px;
-}
-
-td {
-  border: 1px solid #ddd;
-  padding: 10px;
+.student-info p {
+  margin: 6px 0;
   font-size: 15px;
 }
 
-/* ===== تحسين الهاتف ===== */
-@media (max-width: 600px) {
-  td {
-    font-size: 14px;
-    padding: 8px;
-  }
+/* ===== بطاقات المواد ===== */
+.subject {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fafafa;
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+
+.subject span {
+  font-size: 15px;
+}
+
+.mark {
+  background: #0a7cff;
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-weight: bold;
+}
+
+/* ===== رسائل ===== */
+.error {
+  color: red;
+  text-align: center;
+  margin-top: 10px;
 }
 </style>
 </head>
@@ -88,9 +112,9 @@ td {
 <body>
 
 <div class="box">
-  <h3>استخراج نتائج الطالب</h3>
+  <h3>📊 استخراج نتائج الطالب</h3>
 
-  <input type="number" id="civilId" placeholder="الرقم المدني">
+  <input type="number" id="civilId" placeholder="أدخل الرقم المدني">
 
   <button onclick="getResult()">عرض النتيجة</button>
 
@@ -103,7 +127,7 @@ function getResult() {
 
   if (!civilId) {
     document.getElementById("result").innerHTML =
-      "<p style='color:red;text-align:center'>الرجاء إدخال الرقم المدني</p>";
+      "<p class='error'>الرجاء إدخال الرقم المدني</p>";
     return;
   }
 
@@ -116,31 +140,31 @@ function getResult() {
     .then(data => {
       if (!data.found) {
         document.getElementById("result").innerHTML =
-          "<p style='color:red;text-align:center'>الرقم غير موجود</p>";
+          "<p class='error'>الرقم غير موجود</p>";
         return;
       }
 
       document.getElementById("result").innerHTML = `
-        <p><b>اسم الطالب:</b> ${data.name}</p>
-        <p><b>الصف:</b> ${data.grade}</p>
+        <div class="student-info">
+          <p><b>👤 اسم الطالب:</b> ${data.name}</p>
+          <p><b>🏫 الصف:</b> ${data.grade}</p>
+        </div>
 
-        <table>
-          <tr><td>التربية الإسلامية</td><td>${data.islamic}</td></tr>
-          <tr><td>اللغة العربية</td><td>${data.arabic}</td></tr>
-          <tr><td>الرياضيات</td><td>${data.math}</td></tr>
-          <tr><td>العلوم</td><td>${data.science}</td></tr>
-          <tr><td>الدراسات الاجتماعية</td><td>${data.social}</td></tr>
-          <tr><td>المهارات الحياتية</td><td>${data.life}</td></tr>
-          <tr><td>تقنية المعلومات</td><td>${data.it}</td></tr>
-          <tr><td>الرياضة المدرسية</td><td>${data.sport}</td></tr>
-          <tr><td>الفنون التشكيلية</td><td>${data.art}</td></tr>
-          <tr><td>المهارات الموسيقية</td><td>${data.music}</td></tr>
-        </table>
+        <div class="subject"><span>التربية الإسلامية</span><span class="mark">${data.islamic}</span></div>
+        <div class="subject"><span>اللغة العربية</span><span class="mark">${data.arabic}</span></div>
+        <div class="subject"><span>الرياضيات</span><span class="mark">${data.math}</span></div>
+        <div class="subject"><span>العلوم</span><span class="mark">${data.science}</span></div>
+        <div class="subject"><span>الدراسات الاجتماعية</span><span class="mark">${data.social}</span></div>
+        <div class="subject"><span>المهارات الحياتية</span><span class="mark">${data.life}</span></div>
+        <div class="subject"><span>تقنية المعلومات</span><span class="mark">${data.it}</span></div>
+        <div class="subject"><span>الرياضة المدرسية</span><span class="mark">${data.sport}</span></div>
+        <div class="subject"><span>الفنون التشكيلية</span><span class="mark">${data.art}</span></div>
+        <div class="subject"><span>المهارات الموسيقية</span><span class="mark">${data.music}</span></div>
       `;
     })
     .catch(err => {
       document.getElementById("result").innerHTML =
-        "<p style='color:red;text-align:center'>حدث خطأ في الاتصال</p>";
+        "<p class='error'>حدث خطأ في الاتصال</p>";
       console.error(err);
     });
 }
