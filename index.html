@@ -46,7 +46,8 @@
 <script>
 function getResult() {
   const civilId = document.getElementById("civilId").value;
-  const url = "https://script.google.com/macros/s/AKfycbwMWhQZhd26RbgJASv_Y4jFemW3YACA2FzOckwEUJIehj6xs4gNRw1nn4HOCg7t81EVRw/exec=" + civilId;
+  const url = "const url = "https://script.google.com/macros/s/AKfycbwMWhQZhd26RbgJASv_Y4jFemW3YACA2FzOckwEUJIehj6xs4gNRw1nn4HOCg7t81EVRw/exec?civilId=" + civilId;
+
 
   fetch(url)
     .then(res => res.json())
