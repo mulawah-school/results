@@ -46,7 +46,7 @@
 <script>
 function getResult() {
   const civilId = document.getElementById("civilId").value;
-  const url = "PUT_WEB_APP_URL_HERE?civilId=" + civilId;
+  const url = "https://script.google.com/macros/s/AKfycbwMWhQZhd26RbgJASv_Y4jFemW3YACA2FzOckwEUJIehj6xs4gNRw1nn4HOCg7t81EVRw/exec=" + civilId;
 
   fetch(url)
     .then(res => res.json())
