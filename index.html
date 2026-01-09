@@ -5,6 +5,19 @@
 <title>الاستعلام عن نتيجة الطالب</title>
 
 <style>
+/* إصلاح خروج النص من الإطار */
+#officialReport table {
+  table-layout: fixed;
+}
+
+#officialReport td,
+#officialReport th {
+  white-space: normal;        /* السماح بالالتفاف */
+  word-wrap: break-word;      /* كسر الكلمة */
+  overflow-wrap: break-word;
+  line-height: 1.4;
+}
+
 body{
   font-family: Tahoma, Arial, sans-serif;
   background:#f4f6f8;
@@ -164,7 +177,13 @@ td,th{
 
 <tr><td>التربية الإسلامية<br><span class="small">Islamic Education</span></td><td>5</td><td>أ</td><td>A</td><td id="m_islamic"></td></tr>
 <tr><td>اللغة العربية<br><span class="small">Arabic Language</span></td><td>7</td><td>أ</td><td>A</td><td id="m_arabic"></td></tr>
-<tr><td>اللغة الإنجليزية<br><span class="small">English Language</span></td><td>5</td><td>أ</td><td>A</td><td id="m_english"></td></tr>
+<tr>
+  <td>اللغة الإنجليزية<br><span class="small">English Language</span></td>
+  <td class="center">5</td>
+  <td class="center">أ</td>
+  <td class="center">A</td>
+  <td class="center" id="m_english"></td>
+</tr>
 <tr><td>الرياضيات<br><span class="small">Mathematics</span></td><td>7</td><td>أ</td><td>A</td><td id="m_math"></td></tr>
 <tr><td>العلوم<br><span class="small">Science</span></td><td>6</td><td>أ</td><td>A</td><td id="m_science"></td></tr>
 <tr><td>الدراسات الاجتماعية<br><span class="small">Social Studies</span></td><td>4</td><td>أ</td><td>A</td><td id="m_social"></td></tr>
