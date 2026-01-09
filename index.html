@@ -5,26 +5,14 @@
 <title>الاستعلام عن نتيجة الطالب</title>
 
 <style>
-/* إصلاح خروج النص من الإطار */
-#officialReport table {
-  table-layout: fixed;
-}
-
-#officialReport td,
-#officialReport th {
-  white-space: normal;        /* السماح بالالتفاف */
-  word-wrap: break-word;      /* كسر الكلمة */
-  overflow-wrap: break-word;
-  line-height: 1.4;
-}
-
+/* ===== عام ===== */
 body{
   font-family: Tahoma, Arial, sans-serif;
   background:#f4f6f8;
 }
 
 .box{
-  max-width:500px;
+  max-width:520px;
   margin:20px auto;
   background:#fff;
   padding:20px;
@@ -62,21 +50,50 @@ td,th{
   text-align:center;
 }
 
-/* التقرير الرسمي */
+/* ===== التقرير الرسمي ===== */
 #officialReport{
   width:210mm;
   min-height:297mm;
   padding:10mm;
   background:#fff;
   display:none;
+  direction:rtl;
+  font-family: Tahoma, Arial, sans-serif;
 }
 
-.small{font-size:11px}
-.no-border{border:none}
+/* تنظيم النص */
+#officialReport table{
+  table-layout:fixed;
+}
 
+#officialReport td,
+#officialReport th{
+  white-space:normal;
+  word-break:normal;
+  overflow-wrap:break-word;
+  line-height:1.6;
+  vertical-align:middle;
+}
+
+/* النص الإنجليزي */
+.en{
+  display:block;
+  direction:ltr;
+  text-align:left;
+  font-size:11px;
+  font-family: Arial, sans-serif;
+  margin-top:2px;
+}
+
+/* بدون حدود */
+.no-border{
+  border:none !important;
+}
+
+/* طباعة */
 @media print{
-  body *{visibility:hidden}
-  #officialReport, #officialReport *{visibility:visible}
+  body *{visibility:hidden;}
+  #officialReport, #officialReport *{visibility:visible;}
   #officialReport{
     position:absolute;
     right:0;
@@ -128,23 +145,17 @@ td,th{
 <!-- ================================================================= -->
 <div id="officialReport">
 
-<table class="no-border">
-<tr class="no-border">
-  <td class="no-border" width="20%" style="text-align:center">
-    <img src="logo.png" height="60">
-  </td>
-  <td class="no-border" width="60%" style="text-align:center">
-    <b>سلطنة عمان<br>وزارة التربية والتعليم</b><br>
-    <b>كشف درجات الطالب في الفصل الدراسي</b><br>
-    <span class="small">TRANSCRIPT OF STUDENT ATTAINMENT AT THE END OF THE SEMESTER</span><br>
-    <span class="small">العام الدراسي : 2025 / 2026</span>
-  </td>
-  <td class="no-border"></td>
-</tr>
-</table>
+<!-- ===== الترويسة ===== -->
+<div style="text-align:center; margin-bottom:10px;">
+  <img src="logo.png" height="70"><br>
+  <b>سلطنة عمان</b><br>
+  <b>وزارة التربية والتعليم</b><br>
+  <b>كشف درجات الطالب في الفصل الدراسي</b><br>
+  <span class="en">TRANSCRIPT OF STUDENT ATTAINMENT AT THE END OF THE SEMESTER</span>
+  <div>العام الدراسي : 2025 / 2026</div>
+</div>
 
-<br>
-
+<!-- ===== بيانات الطالب ===== -->
 <table>
 <tr>
   <td>اسم الطالب</td><td id="s_name"></td>
@@ -164,34 +175,60 @@ td,th{
 </tr>
 </table>
 
-<br>
-
+<!-- ===== جدول المواد ===== -->
 <table>
 <tr>
-  <th>المادة<br><span class="small">SUBJECT</span></th>
-  <th>الحصص<br><span class="small">PERIODS</span></th>
+  <th>المادة<br><span class="en">SUBJECT</span></th>
+  <th>الحصص<br><span class="en">PERIODS</span></th>
   <th>الرمز</th>
   <th>التقدير</th>
   <th>الدرجة</th>
 </tr>
 
-<tr><td>التربية الإسلامية<br><span class="small">Islamic Education</span></td><td>5</td><td>أ</td><td>A</td><td id="m_islamic"></td></tr>
-<tr><td>اللغة العربية<br><span class="small">Arabic Language</span></td><td>7</td><td>أ</td><td>A</td><td id="m_arabic"></td></tr>
 <tr>
-  <td>اللغة الإنجليزية<br><span class="small">English Language</span></td>
-  <td class="center">5</td>
-  <td class="center">أ</td>
-  <td class="center">A</td>
-  <td class="center" id="m_english"></td>
+  <td>التربية الإسلامية<span class="en">Islamic Education</span></td>
+  <td>5</td><td>أ</td><td>A</td><td id="m_islamic"></td>
 </tr>
-<tr><td>الرياضيات<br><span class="small">Mathematics</span></td><td>7</td><td>أ</td><td>A</td><td id="m_math"></td></tr>
-<tr><td>العلوم<br><span class="small">Science</span></td><td>6</td><td>أ</td><td>A</td><td id="m_science"></td></tr>
-<tr><td>الدراسات الاجتماعية<br><span class="small">Social Studies</span></td><td>4</td><td>أ</td><td>A</td><td id="m_social"></td></tr>
-<tr><td>المهارات الحياتية<br><span class="small">Life Skills</span></td><td>1</td><td>أ</td><td>A</td><td id="m_life"></td></tr>
-<tr><td>تقنية المعلومات<br><span class="small">Information Technology</span></td><td>2</td><td>أ</td><td>A</td><td id="m_it"></td></tr>
-<tr><td>الرياضة المدرسية<br><span class="small">School Sports</span></td><td>1</td><td>أ</td><td>A</td><td id="m_sport"></td></tr>
-<tr><td>الفنون التشكيلية<br><span class="small">Arts</span></td><td>1</td><td>أ</td><td>A</td><td id="m_art"></td></tr>
-<tr><td>المهارات الموسيقية<br><span class="small">Musical Skills</span></td><td>1</td><td>أ</td><td>A</td><td id="m_music"></td></tr>
+<tr>
+  <td>اللغة العربية<span class="en">Arabic Language</span></td>
+  <td>7</td><td>أ</td><td>A</td><td id="m_arabic"></td>
+</tr>
+<tr>
+  <td>اللغة الإنجليزية<span class="en">English Language</span></td>
+  <td>5</td><td>أ</td><td>A</td><td id="m_english"></td>
+</tr>
+<tr>
+  <td>الرياضيات<span class="en">Mathematics</span></td>
+  <td>7</td><td>أ</td><td>A</td><td id="m_math"></td>
+</tr>
+<tr>
+  <td>العلوم<span class="en">Science</span></td>
+  <td>6</td><td>أ</td><td>A</td><td id="m_science"></td>
+</tr>
+<tr>
+  <td>الدراسات الاجتماعية<span class="en">Social Studies</span></td>
+  <td>4</td><td>أ</td><td>A</td><td id="m_social"></td>
+</tr>
+<tr>
+  <td>المهارات الحياتية<span class="en">Life Skills</span></td>
+  <td>1</td><td>أ</td><td>A</td><td id="m_life"></td>
+</tr>
+<tr>
+  <td>تقنية المعلومات<span class="en">Information Technology</span></td>
+  <td>2</td><td>أ</td><td>A</td><td id="m_it"></td>
+</tr>
+<tr>
+  <td>الرياضة المدرسية<span class="en">School Sports</span></td>
+  <td>1</td><td>أ</td><td>A</td><td id="m_sport"></td>
+</tr>
+<tr>
+  <td>الفنون التشكيلية<span class="en">Arts</span></td>
+  <td>1</td><td>أ</td><td>A</td><td id="m_art"></td>
+</tr>
+<tr>
+  <td>المهارات الموسيقية<span class="en">Musical Skills</span></td>
+  <td>1</td><td>أ</td><td>A</td><td id="m_music"></td>
+</tr>
 </table>
 
 </div>
