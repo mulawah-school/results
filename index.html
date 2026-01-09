@@ -2,64 +2,66 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<title>استخراج نتائج الطلبة</title>
+<title>كشف درجات الطالب</title>
 
 <style>
-body {
-  font-family: Arial;
-  background: #f4f6f8;
+body{
+  font-family: Tahoma, Arial, sans-serif;
+  background:#f4f6f8;
 }
 
-.box {
-  max-width: 450px;
-  margin: 30px auto;
-  background: white;
-  padding: 20px;
-  border-radius: 10px;
-  box-shadow: 0 0 10px #ccc;
+.box{
+  max-width:480px;
+  margin:20px auto;
+  background:#fff;
+  padding:20px;
+  border-radius:10px;
+  box-shadow:0 0 10px #ccc;
 }
 
-button {
-  width: 100%;
-  padding: 10px;
-  background: #0a7cff;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  margin-top: 5px;
+button{
+  width:100%;
+  padding:10px;
+  background:#0a7cff;
+  color:#fff;
+  border:none;
+  border-radius:5px;
+  cursor:pointer;
+  margin-top:5px;
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 10px;
+table{
+  width:100%;
+  border-collapse:collapse;
+  margin-top:10px;
 }
 
-td, th {
-  border: 1px solid #000;
-  padding: 6px;
-  font-size: 13px;
-  text-align: center;
+td,th{
+  border:1px solid #000;
+  padding:6px;
+  font-size:13px;
+  text-align:center;
 }
 
-h4 {
-  text-align: center;
-  margin-top: 15px;
+/* تحسين النص العربي في PDF */
+#pdfResult{
+  font-family: Tahoma, Arial, sans-serif;
+  word-spacing:3px;
+  letter-spacing:0.3px;
 }
 
-@media print {
-  body * {
-    visibility: hidden;
-  }
-  #pdfResult, #pdfResult * {
-    visibility: visible;
-  }
-  #pdfResult {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
+#pdfResult td{
+  white-space:nowrap;
+}
+
+@media print{
+  body *{visibility:hidden;}
+  #pdfResult,#pdfResult *{visibility:visible;}
+  #pdfResult{
+    position:absolute;
+    right:0;
+    top:0;
+    width:100%;
   }
 }
 </style>
@@ -70,18 +72,16 @@ h4 {
 <div class="box">
   <h3 style="text-align:center;">الاستعلام عن نتيجة الطالب</h3>
 
-  <input type="text" id="civilId" placeholder="الرقم المدني"
-    style="width:100%;padding:8px;" />
-  <br><br>
+  <input id="civilId" placeholder="الرقم المدني"
+         style="width:100%;padding:8px">
 
   <button onclick="getResult()">عرض النتيجة</button>
   <button onclick="downloadPDF()">📄 تحميل PDF</button>
   <button onclick="printResult()">🖨️ طباعة</button>
 
-  <!-- ===== عرض النتيجة في HTML ===== -->
+  <!-- عرض النتيجة في الصفحة -->
   <div id="htmlResult" style="display:none;">
     <h4>نتيجة الطالب</h4>
-
     <p><b>اسم الطالب:</b> <span id="h_name"></span></p>
     <p><b>الرقم المدني:</b> <span id="h_civil"></span></p>
     <p><b>الصف:</b> <span id="h_grade"></span></p>
@@ -100,23 +100,22 @@ h4 {
       <tr><td>المهارات الموسيقية</td><td id="h_music"></td></tr>
     </table>
   </div>
-
 </div>
 
-<!-- ===== قالب PDF ===== -->
-<div id="pdfResult" style="display:none; direction:rtl; font-family:'Times New Roman';">
+<!-- ===== تقرير PDF ===== -->
+<div id="pdfResult" style="display:none; direction:rtl;">
 
   <div style="text-align:center;border-bottom:2px solid #000;padding-bottom:10px;">
-    <img src="logo.png" style="height:70px;"><br>
-    <b>سلطنة عمان<br>وزارة التربية  والتعليم</b>
+    <img src="logo.png" style="height:70px"><br>
+    <b>سلطنة عمان<br>وزارة التربية والتعليم</b>
     <h3>كشف درجات الطالب للفصل الدراسي</h3>
-    <div style="font-size:12px;">العام الدراسي: 2025 / 2026</div>
+    <div>العام الدراسي: 2025 / 2026</div>
   </div>
 
   <table>
     <tr>
-      <td><b>اسم  الطالب</b></td><td id="pdfName"></td>
-      <td><b>الرقم  المدني</b></td><td id="pdfCivil"></td>
+      <td><b>اسم الطالب</b></td><td id="pdfName"></td>
+      <td><b>الرقم المدني</b></td><td id="pdfCivil"></td>
     </tr>
     <tr>
       <td><b>الصف</b></td><td id="pdfGrade"></td>
@@ -124,18 +123,19 @@ h4 {
     </tr>
   </table>
 
+  <!-- جدول المواد -->
   <table>
     <tr><th>المادة</th><th>الدرجة</th></tr>
-    <tr><td>التربية  الإسلامية</td><td id="m_islamic"></td></tr>
-    <tr><td>اللغة  العربية</td><td id="m_arabic"></td></tr>
+    <tr><td>التربية الإسلامية</td><td id="m_islamic"></td></tr>
+    <tr><td>اللغة العربية</td><td id="m_arabic"></td></tr>
     <tr><td>الرياضيات</td><td id="m_math"></td></tr>
     <tr><td>العلوم</td><td id="m_science"></td></tr>
-    <tr><td>الدراسات  الاجتماعية</td><td id="m_social"></td></tr>
-    <tr><td>المهارات  الحياتية</td><td id="m_life"></td></tr>
-    <tr><td>تقنية  المعلومات</td><td id="m_it"></td></tr>
-    <tr><td>الرياضة  المدرسية</td><td id="m_sport"></td></tr>
-    <tr><td>الفنون  التشكيلية</td><td id="m_art"></td></tr>
-    <tr><td>المهارات  الموسيقية</td><td id="m_music"></td></tr>
+    <tr><td>الدراسات الاجتماعية</td><td id="m_social"></td></tr>
+    <tr><td>المهارات الحياتية</td><td id="m_life"></td></tr>
+    <tr><td>تقنية المعلومات</td><td id="m_it"></td></tr>
+    <tr><td>الرياضة المدرسية</td><td id="m_sport"></td></tr>
+    <tr><td>الفنون التشكيلية</td><td id="m_art"></td></tr>
+    <tr><td>المهارات الموسيقية</td><td id="m_music"></td></tr>
   </table>
 
 </div>
@@ -143,71 +143,60 @@ h4 {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
 <script>
-function getResult() {
-  const civilId = document.getElementById("civilId").value.trim();
-  if (!civilId) return;
+function getResult(){
+  const civilId=document.getElementById("civilId").value.trim();
+  if(!civilId) return;
 
-  const url =
-    "https://script.google.com/macros/s/AKfycbwMWhQZhd26RbgJASv_Y4jFemW3YACA2FzOckwEUJIehj6xs4gNRw1nn4HOCg7t81EVRw/exec?civilId="
-    + civilId;
+  fetch("https://script.google.com/macros/s/AKfycbwMWhQZhd26RbgJASv_Y4jFemW3YACA2FzOckwEUJIehj6xs4gNRw1nn4HOCg7t81EVRw/exec?civilId="+civilId)
+  .then(r=>r.json())
+  .then(d=>{
+    if(!d.found){alert("الرقم غير موجود");return;}
 
-  fetch(url)
-    .then(res => res.json())
-    .then(data => {
-      if (!data.found) {
-        alert("الرقم غير موجود");
-        return;
-      }
+    htmlResult.style.display="block";
 
-      // إظهار النتيجة في HTML
-      htmlResult.style.display = "block";
+    h_name.innerText=d.name;
+    h_civil.innerText=d.civilId;
+    h_grade.innerText=d.grade || "";
 
-      h_name.innerText = data.name;
-      h_civil.innerText = data.civilId;
-      h_grade.innerText = data.grade;
+    h_islamic.innerText=d.islamic;
+    h_arabic.innerText=d.arabic;
+    h_math.innerText=d.math;
+    h_science.innerText=d.science;
+    h_social.innerText=d.social;
+    h_life.innerText=d.life;
+    h_it.innerText=d.it;
+    h_sport.innerText=d.sport;
+    h_art.innerText=d.art;
+    h_music.innerText=d.music;
 
-      h_islamic.innerText = data.islamic;
-      h_arabic.innerText = data.arabic;
-      h_math.innerText = data.math;
-      h_science.innerText = data.science;
-      h_social.innerText = data.social;
-      h_life.innerText = data.life;
-      h_it.innerText = data.it;
-      h_sport.innerText = data.sport;
-      h_art.innerText = data.art;
-      h_music.innerText = data.music;
+    pdfName.innerText=d.name;
+    pdfCivil.innerText=d.civilId;
+    pdfGrade.innerText=d.grade || "";
 
-      // تعبئة PDF
-      pdfName.innerText = data.name;
-      pdfCivil.innerText = data.civilId;
-      pdfGrade.innerText = data.grade;
-
-      m_islamic.innerText = data.islamic;
-      m_arabic.innerText = data.arabic;
-      m_math.innerText = data.math;
-      m_science.innerText = data.science;
-      m_social.innerText = data.social;
-      m_life.innerText = data.life;
-      m_it.innerText = data.it;
-      m_sport.innerText = data.sport;
-      m_art.innerText = data.art;
-      m_music.innerText = data.music;
-    });
-}
-
-function downloadPDF() {
-  const el = document.getElementById("pdfResult");
-  el.style.display = "block";
-  html2pdf().from(el).save("نتيجة_الطالب.pdf").then(() => {
-    el.style.display = "none";
+    m_islamic.innerText=d.islamic;
+    m_arabic.innerText=d.arabic;
+    m_math.innerText=d.math;
+    m_science.innerText=d.science;
+    m_social.innerText=d.social;
+    m_life.innerText=d.life;
+    m_it.innerText=d.it;
+    m_sport.innerText=d.sport;
+    m_art.innerText=d.art;
+    m_music.innerText=d.music;
   });
 }
 
-function printResult() {
-  const el = document.getElementById("pdfResult");
-  el.style.display = "block";
+function downloadPDF(){
+  const el=document.getElementById("pdfResult");
+  el.style.display="block";
+  html2pdf().from(el).save("نتيجة_الطالب.pdf").then(()=>el.style.display="none");
+}
+
+function printResult(){
+  const el=document.getElementById("pdfResult");
+  el.style.display="block";
   window.print();
-  el.style.display = "none";
+  el.style.display="none";
 }
 </script>
 
