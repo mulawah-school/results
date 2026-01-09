@@ -2,6 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
+
 <title>كشف درجات الطالب</title>
 
 <style>
@@ -10,58 +11,48 @@ body{
   background:#f4f6f8;
 }
 
-.box{
-  max-width:480px;
-  margin:20px auto;
+#report{
+  width:210mm;
+  min-height:297mm;
+  margin:auto;
   background:#fff;
-  padding:20px;
-  border-radius:10px;
-  box-shadow:0 0 10px #ccc;
+  padding:10mm;
+  box-sizing:border-box;
 }
 
-button{
-  width:100%;
-  padding:10px;
-  background:#0a7cff;
-  color:#fff;
-  border:none;
-  border-radius:5px;
-  cursor:pointer;
-  margin-top:5px;
-}
-
+/* جداول */
 table{
   width:100%;
   border-collapse:collapse;
-  margin-top:10px;
+  font-size:12px;
 }
 
 td,th{
   border:1px solid #000;
-  padding:6px;
-  font-size:13px;
-  text-align:center;
+  padding:4px;
+  vertical-align:middle;
 }
 
-/* تحسين النص العربي في PDF */
-#pdfResult{
-  font-family: Tahoma, Arial, sans-serif;
-  word-spacing:3px;
-  letter-spacing:0.3px;
+.center{text-align:center}
+.right{text-align:right}
+.left{text-align:left}
+.no-border{border:none}
+
+.header-title{
+  font-size:16px;
+  font-weight:bold;
 }
 
-#pdfResult td{
-  white-space:nowrap;
-}
+.small{font-size:11px}
 
+/* طباعة */
 @media print{
-  body *{visibility:hidden;}
-  #pdfResult,#pdfResult *{visibility:visible;}
-  #pdfResult{
+  body *{visibility:hidden}
+  #report, #report *{visibility:visible}
+  #report{
     position:absolute;
     right:0;
     top:0;
-    width:100%;
   }
 }
 </style>
@@ -69,136 +60,184 @@ td,th{
 
 <body>
 
-<div class="box">
-  <h3 style="text-align:center;">الاستعلام عن نتيجة الطالب</h3>
+<div id="report">
 
-  <input id="civilId" placeholder="الرقم المدني"
-         style="width:100%;padding:8px">
+<!-- ===== الترويسة ===== -->
+<table class="no-border">
+<tr class="no-border">
+  <td class="no-border center" width="20%">
+    <img src="logo.png" height="60">
+  </td>
+  <td class="no-border center" width="60%">
+    <div class="header-title">سلطنة عمان</div>
+    <div class="header-title">وزارة التربية والتعليم</div>
+    <div class="header-title">كشف درجات الطالب في الفصل الدراسي</div>
+    <div class="small">TRANSCRIPT OF STUDENT ATTAINMENT AT THE END OF THE SEMESTER</div>
+    <div class="small">العام الدراسي : 2025 / 2026</div>
+  </td>
+  <td class="no-border"></td>
+</tr>
+</table>
 
-  <button onclick="getResult()">عرض النتيجة</button>
-  <button onclick="downloadPDF()">📄 تحميل PDF</button>
-  <button onclick="printResult()">🖨️ طباعة</button>
+<br>
 
-  <!-- عرض النتيجة في الصفحة -->
-  <div id="htmlResult" style="display:none;">
-    <h4>نتيجة الطالب</h4>
-    <p><b>اسم الطالب:</b> <span id="h_name"></span></p>
-    <p><b>الرقم المدني:</b> <span id="h_civil"></span></p>
-    <p><b>الصف:</b> <span id="h_grade"></span></p>
+<!-- ===== بيانات الطالب ===== -->
+<table>
+<tr>
+  <td width="20%">اسم الطالب</td>
+  <td width="30%" id="s_name"></td>
+  <td width="20%">الرقم المدني</td>
+  <td width="30%" id="s_civil"></td>
+</tr>
+<tr>
+  <td>الصف والشعبة</td>
+  <td id="s_grade"></td>
+  <td>تاريخ الميلاد</td>
+  <td id="s_birth"></td>
+</tr>
+<tr>
+  <td>المدرسة</td>
+  <td colspan="3">معولة بن شمس للتعليم الأساسي (5–12)</td>
+</tr>
+<tr>
+  <td>المحافظة</td>
+  <td colspan="3">محافظة جنوب الباطنة</td>
+</tr>
+</table>
 
-    <table>
-      <tr><th>المادة</th><th>الدرجة</th></tr>
-      <tr><td>التربية الإسلامية</td><td id="h_islamic"></td></tr>
-      <tr><td>اللغة العربية</td><td id="h_arabic"></td></tr>
-      <tr><td>الرياضيات</td><td id="h_math"></td></tr>
-      <tr><td>العلوم</td><td id="h_science"></td></tr>
-      <tr><td>الدراسات الاجتماعية</td><td id="h_social"></td></tr>
-      <tr><td>المهارات الحياتية</td><td id="h_life"></td></tr>
-      <tr><td>تقنية المعلومات</td><td id="h_it"></td></tr>
-      <tr><td>الرياضة المدرسية</td><td id="h_sport"></td></tr>
-      <tr><td>الفنون التشكيلية</td><td id="h_art"></td></tr>
-      <tr><td>المهارات الموسيقية</td><td id="h_music"></td></tr>
-    </table>
-  </div>
+<br>
+
+<!-- ===== جدول المواد ===== -->
+<table>
+<tr class="center">
+  <th width="18%">المادة<br>SUBJECT</th>
+  <th width="10%">عدد الحصص<br>PERIODS</th>
+  <th width="10%">الرمز<br>CODE</th>
+  <th width="12%">التقدير<br>GRADE</th>
+  <th width="10%">الدرجة<br>MARK</th>
+</tr>
+
+<tr>
+  <td>التربية الإسلامية<br><span class="small">Islamic Education</span></td>
+  <td id="p_islamic" class="center"></td>
+  <td class="center">أ</td>
+  <td class="center">A</td>
+  <td class="center" id="m_islamic"></td>
+</tr>
+
+<tr>
+  <td>اللغة العربية<br><span class="small">Arabic Language</span></td>
+  <td id="p_arabic" class="center"></td>
+  <td class="center">أ</td>
+  <td class="center">A</td>
+  <td class="center" id="m_arabic"></td>
+</tr>
+
+<tr>
+  <td>اللغة الإنجليزية<br><span class="small">English Language</span></td>
+  <td id="p_english" class="center"></td>
+  <td class="center">أ</td>
+  <td class="center">A</td>
+  <td class="center" id="m_english"></td>
+</tr>
+
+<tr>
+  <td>الرياضيات<br><span class="small">Mathematics</span></td>
+  <td id="p_math" class="center"></td>
+  <td class="center">أ</td>
+  <td class="center">A</td>
+  <td class="center" id="m_math"></td>
+</tr>
+
+<tr>
+  <td>العلوم<br><span class="small">Science</span></td>
+  <td id="p_science" class="center"></td>
+  <td class="center">أ</td>
+  <td class="center">A</td>
+  <td class="center" id="m_science"></td>
+</tr>
+
+<tr>
+  <td>الدراسات الاجتماعية<br><span class="small">Social Studies</span></td>
+  <td id="p_social" class="center"></td>
+  <td class="center">أ</td>
+  <td class="center">A</td>
+  <td class="center" id="m_social"></td>
+</tr>
+
+<tr>
+  <td>المهارات الحياتية<br><span class="small">Life Skills</span></td>
+  <td id="p_life" class="center"></td>
+  <td class="center">أ</td>
+  <td class="center">A</td>
+  <td class="center" id="m_life"></td>
+</tr>
+
+<tr>
+  <td>تقنية المعلومات<br><span class="small">Information Technology</span></td>
+  <td id="p_it" class="center"></td>
+  <td class="center">أ</td>
+  <td class="center">A</td>
+  <td class="center" id="m_it"></td>
+</tr>
+
+<tr>
+  <td>الرياضة المدرسية<br><span class="small">School Sports</span></td>
+  <td id="p_sport" class="center"></td>
+  <td class="center">أ</td>
+  <td class="center">A</td>
+  <td class="center" id="m_sport"></td>
+</tr>
+
+<tr>
+  <td>الفنون التشكيلية<br><span class="small">Arts</span></td>
+  <td id="p_art" class="center"></td>
+  <td class="center">أ</td>
+  <td class="center">A</td>
+  <td class="center" id="m_art"></td>
+</tr>
+
+<tr>
+  <td>المهارات الموسيقية<br><span class="small">Musical Skills</span></td>
+  <td id="p_music" class="center"></td>
+  <td class="center">أ</td>
+  <td class="center">A</td>
+  <td class="center" id="m_music"></td>
+</tr>
+
+</table>
+
+<br>
+
+<!-- ===== جدول التقديرات ===== -->
+<table>
+<tr class="center">
+  <th>الرمز</th>
+  <th>الدرجة</th>
+  <th>الوصف</th>
+</tr>
+<tr><td>A</td><td>90 – 100</td><td>ممتاز / EXCELLENT</td></tr>
+<tr><td>B</td><td>80 – 89</td><td>جيد جدًا / VERY GOOD</td></tr>
+<tr><td>C</td><td>65 – 79</td><td>جيد / GOOD</td></tr>
+<tr><td>D</td><td>50 – 64</td><td>مقبول / SATISFACTORY</td></tr>
+<tr><td>E</td><td>0 – 49</td><td>يحتاج إلى مساعدة / UNSATISFACTORY</td></tr>
+</table>
+
+<br>
+
+<!-- ===== التذييل ===== -->
+<table class="no-border">
+<tr class="no-border">
+  <td class="no-border">ملاحظات ولي الأمر وتوقيعه :</td>
+  <td class="no-border center">مدير المدرسة<br>HEADMASTER</td>
+</tr>
+<tr class="no-border">
+  <td class="no-border">تاريخ الإصدار : 2026/01/05</td>
+  <td class="no-border"></td>
+</tr>
+</table>
+
 </div>
-
-<!-- ===== تقرير PDF ===== -->
-<div id="pdfResult" style="display:none; direction:rtl;">
-
-  <div style="text-align:center;border-bottom:2px solid #000;padding-bottom:10px;">
-    <img src="logo.png" style="height:70px"><br>
-    <b>سلطنة عمان<br>وزارة التربية والتعليم</b>
-    <h3>كشف درجات الطالب للفصل الدراسي</h3>
-    <div>العام الدراسي: 2025 / 2026</div>
-  </div>
-
-  <table>
-    <tr>
-      <td><b>اسم الطالب</b></td><td id="pdfName"></td>
-      <td><b>الرقم المدني</b></td><td id="pdfCivil"></td>
-    </tr>
-    <tr>
-      <td><b>الصف</b></td><td id="pdfGrade"></td>
-      <td></td><td></td>
-    </tr>
-  </table>
-
-  <!-- جدول المواد -->
-  <table>
-    <tr><th>المادة</th><th>الدرجة</th></tr>
-    <tr><td>التربية الإسلامية</td><td id="m_islamic"></td></tr>
-    <tr><td>اللغة العربية</td><td id="m_arabic"></td></tr>
-    <tr><td>الرياضيات</td><td id="m_math"></td></tr>
-    <tr><td>العلوم</td><td id="m_science"></td></tr>
-    <tr><td>الدراسات الاجتماعية</td><td id="m_social"></td></tr>
-    <tr><td>المهارات الحياتية</td><td id="m_life"></td></tr>
-    <tr><td>تقنية المعلومات</td><td id="m_it"></td></tr>
-    <tr><td>الرياضة المدرسية</td><td id="m_sport"></td></tr>
-    <tr><td>الفنون التشكيلية</td><td id="m_art"></td></tr>
-    <tr><td>المهارات الموسيقية</td><td id="m_music"></td></tr>
-  </table>
-
-</div>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-
-<script>
-function getResult(){
-  const civilId=document.getElementById("civilId").value.trim();
-  if(!civilId) return;
-
-  fetch("https://script.google.com/macros/s/AKfycbwMWhQZhd26RbgJASv_Y4jFemW3YACA2FzOckwEUJIehj6xs4gNRw1nn4HOCg7t81EVRw/exec?civilId="+civilId)
-  .then(r=>r.json())
-  .then(d=>{
-    if(!d.found){alert("الرقم غير موجود");return;}
-
-    htmlResult.style.display="block";
-
-    h_name.innerText=d.name;
-    h_civil.innerText=d.civilId;
-    h_grade.innerText=d.grade || "";
-
-    h_islamic.innerText=d.islamic;
-    h_arabic.innerText=d.arabic;
-    h_math.innerText=d.math;
-    h_science.innerText=d.science;
-    h_social.innerText=d.social;
-    h_life.innerText=d.life;
-    h_it.innerText=d.it;
-    h_sport.innerText=d.sport;
-    h_art.innerText=d.art;
-    h_music.innerText=d.music;
-
-    pdfName.innerText=d.name;
-    pdfCivil.innerText=d.civilId;
-    pdfGrade.innerText=d.grade || "";
-
-    m_islamic.innerText=d.islamic;
-    m_arabic.innerText=d.arabic;
-    m_math.innerText=d.math;
-    m_science.innerText=d.science;
-    m_social.innerText=d.social;
-    m_life.innerText=d.life;
-    m_it.innerText=d.it;
-    m_sport.innerText=d.sport;
-    m_art.innerText=d.art;
-    m_music.innerText=d.music;
-  });
-}
-
-function downloadPDF(){
-  const el=document.getElementById("pdfResult");
-  el.style.display="block";
-  html2pdf().from(el).save("نتيجة_الطالب.pdf").then(()=>el.style.display="none");
-}
-
-function printResult(){
-  const el=document.getElementById("pdfResult");
-  el.style.display="block";
-  window.print();
-  el.style.display="none";
-}
-</script>
 
 </body>
 </html>
