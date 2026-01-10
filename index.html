@@ -3,42 +3,63 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>استخراج نتائج الطلبة</title>
+<title>نتائج معولة بن شمس</title>
 
 <style>
-/* ===== الخلفية ===== */
+/* ===== إعدادات عامة ===== */
 body {
   font-family: Arial, Tahoma, sans-serif;
   margin: 0;
   padding: 0;
   min-height: 100vh;
-  background:
-    linear-gradient(
-      rgba(255,255,255,0.75),
-      rgba(255,255,255,0.75)
-    ),
-    url("school-bg.jpg");
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
+  overflow-x: hidden;
 }
 
-/* ===== الصندوق ===== */
+/* ===== خلفية متحركة ===== */
+.background {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.75), rgba(255,255,255,0.75)),
+    url("school-bg.jpg");
+  background-repeat: no-repeat;
+  background-position: center top;
+  background-size: contain;
+  transform: translateY(0);
+}
+
+/* كمبيوتر */
+@media (min-width: 768px) {
+  .background {
+    background-size: cover;
+    background-position: center;
+  }
+}
+
+/* ===== صندوق المحتوى ===== */
 .box {
   max-width: 95%;
-  margin: 30px auto;
-  background: rgba(255,255,255,0.95);
+  margin: 25px auto;
+  background: rgba(255,255,255,0.96);
   padding: 18px;
-  border-radius: 16px;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+  border-radius: 18px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
   backdrop-filter: blur(3px);
+}
+
+/* ===== الشعار ===== */
+.logo {
+  display: block;
+  margin: 0 auto 10px;
+  max-width: 140px;
 }
 
 /* ===== العنوان ===== */
 h3 {
   text-align: center;
   color: #0a7cff;
+  margin-bottom: 15px;
 }
 
 /* ===== الإدخال ===== */
@@ -48,10 +69,9 @@ input {
   font-size: 16px;
   border-radius: 10px;
   border: 1px solid #ccc;
-  box-sizing: border-box;
 }
 
-/* ===== زر ===== */
+/* ===== الأزرار ===== */
 button {
   width: 100%;
   padding: 14px;
@@ -64,15 +84,40 @@ button {
   cursor: pointer;
 }
 
-/* ===== النتيجة ===== */
+/* ===== معلومات الطالب ===== */
+.student-info {
+  background: #eef4ff;
+  padding: 12px;
+  border-radius: 12px;
+  margin-top: 15px;
+  animation: fadeSlide 0.6s ease forwards;
+}
+
+/* ===== بطاقات المواد ===== */
 .subject {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   background: #f8f9fb;
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 12px;
   margin-top: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  opacity: 0;
+  transform: translateY(10px);
+  animation: subjectIn 0.4s ease forwards;
 }
+
+.subject:nth-child(1){animation-delay:.05s}
+.subject:nth-child(2){animation-delay:.1s}
+.subject:nth-child(3){animation-delay:.15s}
+.subject:nth-child(4){animation-delay:.2s}
+.subject:nth-child(5){animation-delay:.25s}
+.subject:nth-child(6){animation-delay:.3s}
+.subject:nth-child(7){animation-delay:.35s}
+.subject:nth-child(8){animation-delay:.4s}
+.subject:nth-child(9){animation-delay:.45s}
+.subject:nth-child(10){animation-delay:.5s}
 
 .mark {
   background: #0a7cff;
@@ -82,67 +127,91 @@ button {
   font-weight: bold;
 }
 
-.student-info {
-  background: #eef4ff;
-  padding: 12px;
-  border-radius: 12px;
-  margin-top: 15px;
+/* ===== الفوتر ===== */
+.footer {
+  text-align: center;
+  margin-top: 20px;
+  opacity: 0.85;
+}
+
+/* ===== الحركات ===== */
+@keyframes fadeSlide {
+  from {opacity:0; transform: translateY(15px);}
+  to {opacity:1; transform: translateY(0);}
+}
+
+@keyframes subjectIn {
+  to {opacity:1; transform: translateY(0);}
 }
 </style>
 </head>
 
 <body>
 
+<div class="background" id="bg"></div>
+
 <div class="box">
-  <h3>📊 استخراج نتائج الطالب</h3>
+  <!-- شعار أعلى -->
+  <img src="logo_no_bg.png" class="logo">
+
+  <h3>📊 نتائج معولة بن شمس</h3>
 
   <input type="number" id="civilId" placeholder="أدخل الرقم المدني">
 
   <button onclick="getResult()">عرض النتيجة</button>
 
   <div id="result"></div>
+
+  <!-- شعار أسفل -->
+  <div class="footer">
+    <img src="logo_no_bg.png" class="logo" style="max-width:100px">
+  </div>
 </div>
 
 <script>
+/* حركة خلفية خفيفة */
+window.addEventListener("scroll", () => {
+  document.getElementById("bg").style.transform =
+    "translateY(" + window.scrollY * 0.15 + "px)";
+});
+
+/* جلب النتيجة */
 function getResult() {
   const civilId = document.getElementById("civilId").value.trim();
   if (!civilId) {
-    document.getElementById("result").innerHTML =
-      "<p style='color:red;text-align:center'>الرجاء إدخال الرقم المدني</p>";
+    result.innerHTML = "<p style='color:red;text-align:center'>أدخل الرقم المدني</p>";
     return;
   }
 
-  const url =
+  fetch(
     "https://script.google.com/macros/s/AKfycbwTtNStgKnx5sU_IG-S3LdQWpIWcUOjKrXa3U_40oKyBTfDglsiKE3FASU1j2sIo-cE/exec?civilId=" +
-    encodeURIComponent(civilId);
+    encodeURIComponent(civilId)
+  )
+  .then(r=>r.json())
+  .then(d=>{
+    if(!d.found){
+      result.innerHTML="<p style='color:red;text-align:center'>الرقم غير موجود</p>";
+      return;
+    }
 
-  fetch(url)
-    .then(res => res.json())
-    .then(data => {
-      if (!data.found) {
-        document.getElementById("result").innerHTML =
-          "<p style='color:red;text-align:center'>الرقم غير موجود</p>";
-        return;
-      }
+    result.innerHTML = `
+      <div class="student-info">
+        <p><b>👤 اسم الطالب:</b> ${d.name}</p>
+        <p><b>🏫 الصف:</b> ${d.grade}</p>
+      </div>
 
-      document.getElementById("result").innerHTML = `
-        <div class="student-info">
-          <p><b>👤 اسم الطالب:</b> ${data.name}</p>
-          <p><b>🏫 الصف:</b> ${data.grade}</p>
-        </div>
-
-        <div class="subject"><span>التربية الإسلامية</span><span class="mark">${data.islamic}</span></div>
-        <div class="subject"><span>اللغة العربية</span><span class="mark">${data.arabic}</span></div>
-        <div class="subject"><span>الرياضيات</span><span class="mark">${data.math}</span></div>
-        <div class="subject"><span>العلوم</span><span class="mark">${data.science}</span></div>
-        <div class="subject"><span>الدراسات الاجتماعية</span><span class="mark">${data.social}</span></div>
-        <div class="subject"><span>المهارات الحياتية</span><span class="mark">${data.life}</span></div>
-        <div class="subject"><span>تقنية المعلومات</span><span class="mark">${data.it}</span></div>
-        <div class="subject"><span>الرياضة المدرسية</span><span class="mark">${data.sport}</span></div>
-        <div class="subject"><span>الفنون التشكيلية</span><span class="mark">${data.art}</span></div>
-        <div class="subject"><span>المهارات الموسيقية</span><span class="mark">${data.music}</span></div>
-      `;
-    });
+      <div class="subject"><span>التربية الإسلامية</span><span class="mark">${d.islamic}</span></div>
+      <div class="subject"><span>اللغة العربية</span><span class="mark">${d.arabic}</span></div>
+      <div class="subject"><span>الرياضيات</span><span class="mark">${d.math}</span></div>
+      <div class="subject"><span>العلوم</span><span class="mark">${d.science}</span></div>
+      <div class="subject"><span>الدراسات الاجتماعية</span><span class="mark">${d.social}</span></div>
+      <div class="subject"><span>المهارات الحياتية</span><span class="mark">${d.life}</span></div>
+      <div class="subject"><span>تقنية المعلومات</span><span class="mark">${d.it}</span></div>
+      <div class="subject"><span>الرياضة المدرسية</span><span class="mark">${d.sport}</span></div>
+      <div class="subject"><span>الفنون التشكيلية</span><span class="mark">${d.art}</span></div>
+      <div class="subject"><span>المهارات الموسيقية</span><span class="mark">${d.music}</span></div>
+    `;
+  });
 }
 </script>
 
