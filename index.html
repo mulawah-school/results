@@ -15,19 +15,33 @@ body {
   overflow-x: hidden;
 }
 
-/* ===== خلفية ===== */
+/* ===== الخلفية (أبعد على الهاتف) ===== */
 .background {
   position: fixed;
   inset: 0;
   z-index: -2;
+
   background-image:
-    linear-gradient(rgba(255,255,255,0.75), rgba(255,255,255,0.75)),
+    linear-gradient(
+      rgba(255,255,255,0.75),
+      rgba(255,255,255,0.75)
+    ),
     url("school-bg.jpg");
+
   background-repeat: no-repeat;
   background-position: center top;
-  background-size: contain;
+  background-size: 80%;
+  transform: translateY(0);
 }
 
+/* هواتف صغيرة جدًا */
+@media (max-width: 480px) {
+  .background {
+    background-size: 70%;
+  }
+}
+
+/* كمبيوتر */
 @media (min-width: 768px) {
   .background {
     background-size: cover;
@@ -46,7 +60,7 @@ body {
   backdrop-filter: blur(3px);
 }
 
-/* ===== عنوان مع الشعار ===== */
+/* ===== العنوان مع الشعار ===== */
 .header {
   display: flex;
   align-items: center;
@@ -75,6 +89,7 @@ input {
   font-size: 16px;
   border-radius: 10px;
   border: 1px solid #ccc;
+  box-sizing: border-box;
 }
 
 /* ===== زر ===== */
@@ -114,10 +129,6 @@ button {
   animation: subjectIn 0.4s ease forwards;
 }
 
-.subject:nth-child(n) {
-  animation-delay: calc(var(--i) * 0.05s);
-}
-
 .mark {
   background: #0a7cff;
   color: white;
@@ -126,18 +137,7 @@ button {
   font-weight: bold;
 }
 
-/* ===== فوتر ===== */
-.footer {
-  text-align: center;
-  margin-top: 20px;
-  opacity: 0.85;
-}
-
-.footer img {
-  height: 42px;
-}
-
-/* ===== حركات ===== */
+/* ===== الحركات ===== */
 @keyframes fadeSlide {
   from {opacity:0; transform: translateY(15px);}
   to {opacity:1; transform: translateY(0);}
@@ -155,22 +155,25 @@ button {
 
 <div class="box">
 
-  <!-- ===== العنوان مع الشعار ===== -->
+  <!-- العنوان مع الشعار -->
   <div class="header">
     <img src="logo_no_bg.png" alt="شعار المدرسة">
     <h3>نتائج معولة بن شمس</h3>
     <img src="logo_no_bg.png" alt="شعار المدرسة">
   </div>
 
-  <input type="number" id="civilId" placeholder="أدخل الرقم المدني">
+  <!-- إدخال الرقم المدني -->
+  <input
+    type="text"
+    id="civilId"
+    placeholder="أدخل الرقم المدني"
+    inputmode="numeric"
+    pattern="[0-9]*"
+  >
+
   <button onclick="getResult()">عرض النتيجة</button>
 
   <div id="result"></div>
-
-  <!-- ===== فوتر ===== -->
-  <div class="footer">
-    <img src="logo_no_bg.png" alt="شعار المدرسة">
-  </div>
 
 </div>
 
@@ -186,10 +189,10 @@ function getResult() {
     "https://script.google.com/macros/s/AKfycbwTtNStgKnx5sU_IG-S3LdQWpIWcUOjKrXa3U_40oKyBTfDglsiKE3FASU1j2sIo-cE/exec?civilId=" +
     encodeURIComponent(civilId)
   )
-  .then(r=>r.json())
-  .then(d=>{
-    if(!d.found){
-      result.innerHTML="<p style='color:red;text-align:center'>الرقم غير موجود</p>";
+  .then(r => r.json())
+  .then(d => {
+    if (!d.found) {
+      result.innerHTML = "<p style='color:red;text-align:center'>الرقم غير موجود</p>";
       return;
     }
 
@@ -199,23 +202,23 @@ function getResult() {
         <p><b>🏫 الصف:</b> ${d.grade}</p>
       </div>
 
-      ${subject("التربية الإسلامية", d.islamic, 1)}
-      ${subject("اللغة العربية", d.arabic, 2)}
-      ${subject("الرياضيات", d.math, 3)}
-      ${subject("العلوم", d.science, 4)}
-      ${subject("الدراسات الاجتماعية", d.social, 5)}
-      ${subject("المهارات الحياتية", d.life, 6)}
-      ${subject("تقنية المعلومات", d.it, 7)}
-      ${subject("الرياضة المدرسية", d.sport, 8)}
-      ${subject("الفنون التشكيلية", d.art, 9)}
-      ${subject("المهارات الموسيقية", d.music, 10)}
+      ${subject("التربية الإسلامية", d.islamic)}
+      ${subject("اللغة العربية", d.arabic)}
+      ${subject("الرياضيات", d.math)}
+      ${subject("العلوم", d.science)}
+      ${subject("الدراسات الاجتماعية", d.social)}
+      ${subject("المهارات الحياتية", d.life)}
+      ${subject("تقنية المعلومات", d.it)}
+      ${subject("الرياضة المدرسية", d.sport)}
+      ${subject("الفنون التشكيلية", d.art)}
+      ${subject("المهارات الموسيقية", d.music)}
     `;
   });
 }
 
-function subject(name, mark, i){
+function subject(name, mark) {
   return `
-    <div class="subject" style="--i:${i}">
+    <div class="subject">
       <span>${name}</span>
       <span class="mark">${mark}</span>
     </div>
