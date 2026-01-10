@@ -6,28 +6,38 @@
 <title>استخراج نتائج الطلبة</title>
 
 <style>
-/* ===== عام ===== */
+/* ===== الخلفية ===== */
 body {
   font-family: Arial, Tahoma, sans-serif;
-  background: linear-gradient(180deg,#eef3f9,#f8fafc);
   margin: 0;
   padding: 0;
+  min-height: 100vh;
+  background:
+    linear-gradient(
+      rgba(255,255,255,0.75),
+      rgba(255,255,255,0.75)
+    ),
+    url("school-bg.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
 }
 
 /* ===== الصندوق ===== */
 .box {
   max-width: 95%;
-  margin: 20px auto;
-  background: #fff;
+  margin: 30px auto;
+  background: rgba(255,255,255,0.95);
   padding: 18px;
   border-radius: 16px;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+  backdrop-filter: blur(3px);
 }
 
 /* ===== العنوان ===== */
 h3 {
   text-align: center;
-  margin-bottom: 15px;
   color: #0a7cff;
 }
 
@@ -39,11 +49,6 @@ input {
   border-radius: 10px;
   border: 1px solid #ccc;
   box-sizing: border-box;
-  outline: none;
-}
-
-input:focus {
-  border-color: #0a7cff;
 }
 
 /* ===== زر ===== */
@@ -59,52 +64,29 @@ button {
   cursor: pointer;
 }
 
-button:active {
-  background: #065fcc;
-}
-
-/* ===== معلومات الطالب ===== */
-.student-info {
-  background: #f1f6ff;
-  border-radius: 12px;
-  padding: 12px;
-  margin-top: 15px;
-}
-
-.student-info p {
-  margin: 6px 0;
-  font-size: 15px;
-}
-
-/* ===== بطاقات المواد ===== */
+/* ===== النتيجة ===== */
 .subject {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  background: #fafafa;
+  background: #f8f9fb;
   border-radius: 10px;
   padding: 12px;
   margin-top: 8px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-}
-
-.subject span {
-  font-size: 15px;
 }
 
 .mark {
   background: #0a7cff;
-  color: #fff;
+  color: white;
   padding: 6px 14px;
   border-radius: 20px;
   font-weight: bold;
 }
 
-/* ===== رسائل ===== */
-.error {
-  color: red;
-  text-align: center;
-  margin-top: 10px;
+.student-info {
+  background: #eef4ff;
+  padding: 12px;
+  border-radius: 12px;
+  margin-top: 15px;
 }
 </style>
 </head>
@@ -124,23 +106,22 @@ button:active {
 <script>
 function getResult() {
   const civilId = document.getElementById("civilId").value.trim();
-
   if (!civilId) {
     document.getElementById("result").innerHTML =
-      "<p class='error'>الرجاء إدخال الرقم المدني</p>";
+      "<p style='color:red;text-align:center'>الرجاء إدخال الرقم المدني</p>";
     return;
   }
 
   const url =
-    "https://script.google.com/macros/s/AKfycbwTtNStgKnx5sU_IG-S3LdQWpIWcUOjKrXa3U_40oKyBTfDglsiKE3FASU1j2sIo-cE/exec?civilId="
-    + encodeURIComponent(civilId);
+    "https://script.google.com/macros/s/AKfycbwTtNStgKnx5sU_IG-S3LdQWpIWcUOjKrXa3U_40oKyBTfDglsiKE3FASU1j2sIo-cE/exec?civilId=" +
+    encodeURIComponent(civilId);
 
   fetch(url)
     .then(res => res.json())
     .then(data => {
       if (!data.found) {
         document.getElementById("result").innerHTML =
-          "<p class='error'>الرقم غير موجود</p>";
+          "<p style='color:red;text-align:center'>الرقم غير موجود</p>";
         return;
       }
 
@@ -161,11 +142,6 @@ function getResult() {
         <div class="subject"><span>الفنون التشكيلية</span><span class="mark">${data.art}</span></div>
         <div class="subject"><span>المهارات الموسيقية</span><span class="mark">${data.music}</span></div>
       `;
-    })
-    .catch(err => {
-      document.getElementById("result").innerHTML =
-        "<p class='error'>حدث خطأ في الاتصال</p>";
-      console.error(err);
     });
 }
 </script>
