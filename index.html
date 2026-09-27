@@ -1,230 +1,2352 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>نتائج معولة بن شمس</title>
-
+<title>سجل حصص الاحتياط والتعويض - الاحتياط العام للمدرسة</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-/* ===== إعدادات عامة ===== */
-body {
-  font-family: "Tahoma", Arial, sans-serif;
-  margin: 0;
-  padding: 0;
-  min-height: 100vh;
-  overflow-x: hidden;
+body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
+.sidebar-gradient { background: linear-gradient(145deg, #0f172a 0%, #1e293b 100%); }
+.card-shadow { box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.05), 0 0 1px 1px rgba(15, 23, 42, 0.08); }
+.nav-active { background: linear-gradient(90deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.05)); border-right: 4px solid #10b981; color: #34d399; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.animate-fade { animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+@media print {
+  .no-print, .sidebar { display: none !important; }
+  main { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+  .print-block { display: block !important; box-shadow: none !important; border: none !important; padding: 0 !important; }
+  body { background: white !important; }
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+  @page { size: landscape; margin: 8mm; }
+  button { border: none !important; background: transparent !important; box-shadow: none !important; }
+  table { page-break-inside: auto; }
+  tr { page-break-inside: avoid; }
+  section { box-shadow: none !important; border: 1px solid #e2e8f0 !important; page-break-inside: avoid; }
+
+  /* لا نريد أن يقص التمرير الأفقي أي أيام أو حصص عند الطباعة */
+  .overflow-x-auto { overflow: visible !important; width: 100% !important; }
+  .sticky { position: static !important; }
+
+  /* تصغير الخلايا كي يتسع كل الأسبوع (الأحد - الخميس) في عرض الورقة */
+  table { width: 100% !important; table-layout: fixed !important; font-size: 7px !important; }
+  th, td { padding: 1px !important; }
+  th { font-size: 7px !important; }
+  .min-w-\[190px\] { min-width: 0 !important; width: 70px !important; }
+  .min-w-\[36px\] { min-width: 0 !important; width: auto !important; }
+  .min-h-\[70px\] { min-height: 0 !important; }
+  table button { padding: 1px !important; }
+  table .line-clamp-2 { font-size: 7px !important; -webkit-line-clamp: 2 !important; line-height: 1.1 !important; }
+  table .text-\[9px\], table .text-\[10px\], table .text-\[11px\] { font-size: 6.5px !important; }
 }
-
-/* ===== الخلفية (أبعد على الهاتف) ===== */
-.background {
-  position: fixed;
-  inset: 0;
-  z-index: -2;
-
-  background-image:
-    linear-gradient(
-      rgba(255,255,255,0.75),
-      rgba(255,255,255,0.75)
-    ),
-    url("school-bg.jpg");
-
-  background-repeat: no-repeat;
-  background-position: center top;
-  background-size: 80%;
-  transform: translateY(0);
-}
-
-/* هواتف صغيرة جدًا */
-@media (max-width: 480px) {
-  .background {
-    background-size: 70%;
-  }
-}
-
-/* كمبيوتر */
-@media (min-width: 768px) {
-  .background {
-    background-size: cover;
-    background-position: center;
-  }
-}
-
-/* ===== الصندوق ===== */
-.box {
-  max-width: 95%;
-  margin: 25px auto;
-  background: rgba(255,255,255,0.96);
-  padding: 20px;
-  border-radius: 18px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-  backdrop-filter: blur(3px);
-}
-
-/* ===== العنوان مع الشعار ===== */
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  margin-bottom: 15px;
-  flex-wrap: wrap;
-}
-
-.header img {
-  height: 48px;
-}
-
-.header h3 {
-  margin: 0;
-  font-size: 22px;
-  color: #0a7cff;
-  font-weight: bold;
-  white-space: nowrap;
-}
-
-/* ===== الإدخال ===== */
-input {
-  width: 100%;
-  padding: 14px;
-  font-size: 16px;
-  border-radius: 10px;
-  border: 1px solid #ccc;
-  box-sizing: border-box;
-}
-
-/* ===== زر ===== */
-button {
-  width: 100%;
-  padding: 14px;
-  margin-top: 12px;
-  font-size: 16px;
-  background: #0a7cff;
-  color: #fff;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-}
-
-/* ===== معلومات الطالب ===== */
-.student-info {
-  background: #eef4ff;
-  padding: 12px;
-  border-radius: 12px;
-  margin-top: 15px;
-  animation: fadeSlide 0.6s ease forwards;
-}
-
-/* ===== بطاقات المواد ===== */
-.subject {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #f8f9fb;
-  border-radius: 12px;
-  padding: 12px;
-  margin-top: 8px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-  opacity: 0;
-  transform: translateY(10px);
-  animation: subjectIn 0.4s ease forwards;
-}
-
-.mark {
-  background: #0a7cff;
-  color: white;
-  padding: 6px 14px;
-  border-radius: 20px;
-  font-weight: bold;
-}
-
-/* ===== الحركات ===== */
-@keyframes fadeSlide {
-  from {opacity:0; transform: translateY(15px);}
-  to {opacity:1; transform: translateY(0);}
-}
-
-@keyframes subjectIn {
-  to {opacity:1; transform: translateY(0);}
-}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f1f5f9; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+.report-header { display:block; }
+@media print { .report-header { display:block !important; } }
+.print-only { display: none; }
+@media print { .print-only { display: block !important; } }
 </style>
+<script>
+  if (typeof pdfjsLib !== 'undefined') {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+</script>
 </head>
+<body class="bg-slate-50 min-h-screen text-slate-800 antialiased">
 
-<body>
+<div class="min-h-screen flex flex-col md:flex-row">
+  <!-- Sidebar -->
+  <aside class="sidebar sidebar-gradient no-print w-full md:w-72 text-white p-6 flex flex-col justify-between shrink-0 shadow-xl z-20 md:sticky md:top-0 md:h-screen md:overflow-y-auto">
+    <div>
+      <div class="flex items-center gap-3 mb-8">
+        <div class="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold text-2xl shadow-inner">📚</div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight">سجل الاحتياط</h1>
+          <p class="text-xs text-slate-400">النظام الذكي للعدالة المدرسية</p>
+        </div>
+      </div>
+      <nav class="space-y-1.5" id="nav-container">
+        <button data-page="home" onclick="App.page('home')" class="nav w-full flex items-center gap-3 text-right px-4 py-3 rounded-xl font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">🏠 لوحة التحكم</button>
+        <button data-page="teachers" onclick="App.page('teachers')" class="nav w-full flex items-center gap-3 text-right px-4 py-3 rounded-xl font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">👨‍🏫 إدارة المعلمين</button>
+        <button data-page="schedule" onclick="App.page('schedule')" class="nav w-full flex items-center gap-3 text-right px-4 py-3 rounded-xl font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">🗓️ الجدول العام</button>
+        <button data-page="absence" onclick="App.page('absence')" class="nav w-full flex items-center gap-3 text-right px-4 py-3 rounded-xl font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">📝 تسجيل غياب</button>
+        <button data-page="reports" onclick="App.page('reports')" class="nav w-full flex items-center gap-3 text-right px-4 py-3 rounded-xl font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">📊 تقارير الإحصاء والنسب</button>
+      </nav>
+    </div>
+    <div class="pt-6 border-t border-slate-800/80 mt-6 flex flex-col gap-3">
+      <div class="flex items-center justify-between text-xs text-slate-400">
+        <span>💾 حفظ تلقائي محلي</span>
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+      </div>
+      <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
+        <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
+        <div dir="ltr">📞 98986817</div>
+      </div>
+    </div>
+  </aside>
 
-<div class="background"></div>
+  <!-- Main Content Area -->
+  <main class="flex-1 p-4 md:p-8 overflow-x-hidden">
+    <header class="no-print flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 bg-white p-5 rounded-2xl card-shadow border border-slate-100">
+      <div>
+        <div id="header-ministry" class="text-emerald-600 text-xs font-bold uppercase tracking-wider mb-1">وزارة التربية والتعليم — الاحتياط العام للمدرسة</div>
+        <h2 id="title" class="text-2xl md:text-3xl font-extrabold text-slate-900">لوحة التحكم</h2>
+      </div>
+      <div id="headerActions" class="flex items-center gap-3 w-full sm:w-auto">
+        <button id="headerPrintBtn" onclick="App.printLog()" class="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all">🖨️ طباعة</button>
+        <button id="headerExcelBtn" onclick="App.excel()" class="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-emerald-600/20 transition-all">📊 تصدير Excel</button>
+      </div>
+    </header>
+    <div id="app" class="animate-fade"></div>
+  </main>
+</div>
 
-<div class="box">
-
-  <!-- العنوان مع الشعار -->
-  <div class="header">
-    <img src="logo_no_bg.png" alt="شعار المدرسة">
-    <h3>نتائج معولة بن شمس</h3>
-    <img src="logo_no_bg.png" alt="شعار المدرسة">
+<!-- Modal Dialog -->
+<div id="modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-3xl p-6 md:p-8 w-full max-w-2xl max-h-[90vh] overflow-auto card-shadow border border-slate-100 animate-fade">
+    <div class="flex justify-between items-center pb-4 border-b border-slate-100 mb-5">
+      <h3 id="mt" class="font-bold text-xl text-slate-900"></h3>
+      <button onclick="App.closeM()" class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 font-bold transition-all">✕</button>
+    </div>
+    <div id="mb"></div>
   </div>
-
-  <!-- إدخال الرقم المدني -->
-  <input
-    type="text"
-    id="civilId"
-    placeholder="أدخل الرقم المدني"
-    inputmode="numeric"
-    pattern="[0-9]*"
-  >
-
-  <button onclick="getResult()">عرض النتيجة</button>
-
-  <div id="result"></div>
-
 </div>
 
 <script>
-function getResult() {
-  const civilId = document.getElementById("civilId").value.trim();
-  if (!civilId) {
-    result.innerHTML = "<p style='color:red;text-align:center'>أدخل الرقم المدني</p>";
-    return;
-  }
+const DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
+const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8];
+const $ = id => document.getElementById(id);
+const esc = x => String(x ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
-  fetch(
-    "https://script.google.com/macros/s/AKfycbwTtNStgKnx5sU_IG-S3LdQWpIWcUOjKrXa3U_40oKyBTfDglsiKE3FASU1j2sIo-cE/exec?civilId=" +
-    encodeURIComponent(civilId)
-  )
-  .then(r => r.json())
-  .then(d => {
-    if (!d.found) {
-      result.innerHTML = "<p style='color:red;text-align:center'>الرقم غير موجود</p>";
+const defaultTeachers = [];
+
+let db = JSON.parse(localStorage.getItem('schoolReserveDB') || 'null') || { teachers: defaultTeachers, s: {}, log: [], cnt: {}, free: {}, schoolScheduleMeta: null };
+db.teachers = Array.isArray(db.teachers) ? db.teachers : [];
+db.s = db.s && typeof db.s === 'object' ? db.s : {};
+db.log = Array.isArray(db.log) ? db.log : [];
+db.cnt = db.cnt && typeof db.cnt === 'object' ? db.cnt : {};
+db.free = db.free && typeof db.free === 'object' ? db.free : {};
+db.schoolScheduleMeta = db.schoolScheduleMeta || null;
+db.school = db.school && typeof db.school === 'object' ? db.school : {
+  ministry: 'وزارة التربية والتعليم',
+  name: 'مدرسة التعليم الأساسي',
+  logo: ''
+};
+
+// تنظيف بقايا أسماء تجريبية/افتراضية قديمة كانت محفوظة في المتصفح من إصدار سابق
+// (أسماء مفردة وهمية لا تُطابق أي معلم حقيقي من ملف الإكسل)
+const KNOWN_PLACEHOLDER_NAMES = new Set(['أحمد', 'محمد', 'خالد', 'فيصل', 'سالم', 'عبدالله', 'معلم عام']);
+{
+  const before = db.teachers.length;
+  db.teachers = db.teachers.filter(t => !KNOWN_PLACEHOLDER_NAMES.has(String(t.name || '').trim()));
+  if (db.teachers.length !== before) {
+    const keepIds = new Set(db.teachers.map(t => String(t.id)));
+    Object.keys(db.cnt).forEach(id => { if (!keepIds.has(String(id))) delete db.cnt[id]; });
+    Object.keys(db.s).forEach(k => { if (!keepIds.has(String(k.split('|')[0]))) delete db.s[k]; });
+    Object.keys(db.free).forEach(k => { if (!keepIds.has(String(k.split('|')[0]))) delete db.free[k]; });
+    localStorage.setItem('schoolReserveDB', JSON.stringify(db));
+  }
+}
+
+db.teachers.forEach(t => { if (t.quota == null) t.quota = 3; if (db.cnt[t.id] == null) db.cnt[t.id] = 0; });
+
+const save = () => localStorage.setItem('schoolReserveDB', JSON.stringify(db));
+const key = (id, d, p) => id + '|' + d + '|' + p;
+const freeKey = (id, d, p) => id + '|' + d + '|' + p;
+const lesson = (id, d, p) => db.s[key(id, d, p)] || { sub: '', cl: '' };
+const isFreed = (id, d, p) => !!db.free[freeKey(id, d, p)];
+const activeTeachers = () => db.teachers.filter(t => t.active);
+
+const SKILL_SUBJECTS = new Set([
+  'المهارات الموسيقية',
+  'الفنون التشكيلية',
+  'الرياضة المدرسية',
+  'المهارات الحياتية',
+  'تقنية المعلومات',
+  'التوجيه المهني'
+]);
+
+function teacherLessons(tid) {
+  const out = [];
+  DAYS.forEach(d => PERIODS.forEach(p => {
+    const l = lesson(tid, d, p);
+    if (l.sub || l.cl) out.push({day:d, period:p, ...l});
+  }));
+  return out;
+}
+
+function teacherSubjectStats(tid) {
+  const counts = {};
+  teacherLessons(tid).forEach(l => {
+    if (!l.sub) return;
+    counts[l.sub] = (counts[l.sub] || 0) + 1;
+  });
+  return Object.entries(counts).sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0], 'ar'));
+}
+
+function primarySubject(tid) {
+  return teacherSubjectStats(tid)[0]?.[0] || 'غير محدد';
+}
+
+// مجموعات المواد التي تُدمج معًا في جدول واحد بمسمى موحّد، مع بقاء اسم المادة الفعلي
+// داخل كل حصة كما هو (لا يتغير عرض المادة نفسها، فقط يتغير تجميع/عنوان الجدول).
+const SUBJECT_MERGE_GROUPS = [
+  { target: 'العلوم', members: ['الكيمياء', 'الفيزياء', 'الاحياء', 'علوم بيئه', 'العلوم'] },
+  { target: 'الرياضيات', members: ['الرياضيات', 'الرياضيات الأساسية', 'الرياضيات المتقدمة', 'الرياضيات البحتة'] },
+  { target: 'الدراسات الاجتماعية', members: [
+      'الدراسات الاجتماعية',
+      'الجغرافيا الإقتصادية', 'الجغرافيا الاقتصادية',
+      'التاريخ', 'التاريخ(العالم من حولي)', 'التاريخ (العالم من حولي)',
+      'التاريخ (الحضارة الإسلامية)', 'التاريخ(الحضارة الإسلامية)'
+    ] },
+];
+function groupSubject(tid) {
+  const subj = String(primarySubject(tid) || '').trim();
+  const grp = SUBJECT_MERGE_GROUPS.find(g => g.members.includes(subj));
+  return grp ? grp.target : subj;
+}
+
+function isSkillSubject(subject) {
+  return SKILL_SUBJECTS.has(String(subject || '').trim());
+}
+
+function subjectOrder() {
+  const subjects = [...new Set(db.teachers.map(t => groupSubject(t.id)))]
+    .filter(Boolean)
+    .sort((a,b) => {
+      const sa = isSkillSubject(a), sb = isSkillSubject(b);
+      if (sa !== sb) return sa ? 1 : -1;
+      return a.localeCompare(b, 'ar');
+    });
+  return subjects;
+}
+
+// أسماء المواد طويلة أحيانًا، فبدل كتابتها داخل كل خلية نستخدم لونًا ثابتًا لكل مادة فعلية
+// (نفس اللون دائمًا لنفس المادة)، مع دليل ألوان (Legend) أعلى كل جدول لتوضيح المقصود بكل لون.
+const SUBJECT_COLOR_PALETTE = [
+  { bg: '#fee2e2', text: '#991b1b' }, { bg: '#ffedd5', text: '#9a3412' },
+  { bg: '#fef9c3', text: '#854d0e' }, { bg: '#dcfce7', text: '#166534' },
+  { bg: '#ccfbf1', text: '#115e59' }, { bg: '#cffafe', text: '#155e75' },
+  { bg: '#dbeafe', text: '#1e40af' }, { bg: '#e0e7ff', text: '#3730a3' },
+  { bg: '#ede9fe', text: '#5b21b6' }, { bg: '#fae8ff', text: '#86198f' },
+  { bg: '#fce7f3', text: '#9d174d' }, { bg: '#e2e8f0', text: '#1e293b' },
+  { bg: '#fef3c7', text: '#78350f' }, { bg: '#d9f99d', text: '#3f6212' },
+  { bg: '#bae6fd', text: '#075985' }, { bg: '#fecdd3', text: '#9f1239' },
+];
+function allActualSubjects() {
+  const set = new Set();
+  db.teachers.forEach(t => teacherSubjectStats(t.id).forEach(([s]) => set.add(s)));
+  return [...set].filter(Boolean).sort((a,b) => a.localeCompare(b, 'ar'));
+}
+function buildSubjectColorMap() {
+  const map = {};
+  allActualSubjects().forEach((s, i) => { map[s] = SUBJECT_COLOR_PALETTE[i % SUBJECT_COLOR_PALETTE.length]; });
+  return map;
+}
+function renderSubjectLegend(colorMap, subjects) {
+  if (!subjects.length) return '';
+  return `<div class="flex flex-wrap gap-2 mb-3">${subjects.map(s => {
+    const c = colorMap[s] || { bg: '#e2e8f0', text: '#1e293b' };
+    return `<span class="text-[10px] font-bold px-2.5 py-1 rounded-full" style="background:${c.bg};color:${c.text}">${esc(s)}</span>`;
+  }).join('')}</div>`;
+}
+
+function sharedInfoFor(tid, d, p) {
+  const l = lesson(tid, d, p);
+  if (!l.cl) return null;
+  const ids = db.teachers.filter(t => {
+    if (t.id === tid) return false;
+    const x = lesson(t.id, d, p);
+    return x.cl && x.cl === l.cl;
+  }).map(t => t.name);
+  return ids.length ? ids : null;
+}
+
+function currentPage(x) {
+  document.querySelectorAll('.nav').forEach(b => {
+    const active = b.dataset.page === x;
+    b.classList.toggle('nav-active', active);
+    b.classList.toggle('bg-white/5', active);
+    b.classList.toggle('text-white', active);
+  });
+  if ($('header-ministry')) {
+    $('header-ministry').textContent = `${db.school.ministry} — ${db.school.name}`;
+  }
+}
+
+const App = {
+  alert(msg, title = 'تنبيه هامة') {
+    $('mt').textContent = title;
+    $('mb').innerHTML = `<div class="py-4 text-slate-700 text-base leading-relaxed">${esc(msg)}</div><div class="mt-6 flex justify-end"><button onclick="App.closeM()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-semibold transition-all">حسناً</button></div>`;
+    $('modal').classList.remove('hidden'); $('modal').classList.add('flex');
+  },
+  confirm(msg, onYes, title = 'تأكيد العملية') {
+    $('mt').textContent = title;
+    $('mb').innerHTML = `<div class="py-4 text-slate-700 text-base leading-relaxed">${esc(msg)}</div><div class="mt-6 flex gap-3 justify-end"><button onclick="App.closeM()" class="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold transition-all">إلغاء</button><button id="confirmYesBtn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-semibold transition-all">تأكيد</button></div>`;
+    $('confirmYesBtn').onclick = () => { App.closeM(); onYes(); };
+    $('modal').classList.remove('hidden'); $('modal').classList.add('flex');
+  },
+  openM(t, b) { $('mt').textContent = t; $('mb').innerHTML = b; $('modal').classList.remove('hidden'); $('modal').classList.add('flex'); },
+  closeM() { $('modal').classList.add('hidden'); $('modal').classList.remove('flex'); },
+
+  openSchoolSettings() {
+    this.openM('إعدادات المدرسة والشعار', `
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">اسم الوزارة / الجهة</label>
+          <input id="setMinistry" value="${esc(db.school.ministry)}" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">اسم المدرسة</label>
+          <input id="setName" value="${esc(db.school.name)}" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">شعار المدرسة (صورة من الجهاز)</label>
+          <input id="setLogoFile" type="file" accept="image/*" onchange="App.handleLogoUpload(this)" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer">
+          <div id="logoPreviewContainer" class="mt-3">
+            ${db.school.logo ? `<div class="flex items-center gap-3"><img src="${esc(db.school.logo)}" alt="الشعار الحالي" class="w-16 h-16 object-contain rounded-xl border p-1 bg-slate-50"><button type="button" onclick="App.removeLogo()" class="text-xs text-rose-600 hover:underline">إزالة الشعار</button></div>` : '<span class="text-xs text-slate-400">لا يوجد شعار مرفوع حالياً</span>'}
+          </div>
+        </div>
+        <div class="flex justify-end pt-2">
+          <button onclick="App.saveSchoolSettings()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-semibold shadow-md transition-all">حفظ الإعدادات</button>
+        </div>
+      </div>
+    `);
+  },
+
+  handleLogoUpload(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      window.tempUploadedLogo = e.target.result;
+      const prev = $('logoPreviewContainer');
+      if (prev) {
+        prev.innerHTML = `<div class="flex items-center gap-3"><img src="${e.target.result}" alt="معاينة الشعار" class="w-16 h-16 object-contain rounded-xl border p-1 bg-slate-50"><button type="button" onclick="App.removeLogo()" class="text-xs text-rose-600 hover:underline">إزالة الشعار</button></div>`;
+      }
+    };
+    reader.readAsDataURL(file);
+  },
+
+  removeLogo() {
+    window.tempUploadedLogo = '';
+    db.school.logo = '';
+    save();
+    const prev = $('logoPreviewContainer');
+    if (prev) {
+      prev.innerHTML = '<span class="text-xs text-slate-400">تم إزالة الشعار</span>';
+    }
+  },
+
+  saveSchoolSettings() {
+    db.school.ministry = $('setMinistry')?.value.trim() || 'وزارة التربية والتعليم';
+    db.school.name = $('setName')?.value.trim() || 'مدرسة التعليم الأساسي';
+    if (window.tempUploadedLogo !== undefined) {
+      db.school.logo = window.tempUploadedLogo;
+      delete window.tempUploadedLogo;
+    }
+    save();
+    this.closeM();
+    this.page('home');
+  },
+
+  page(x) {
+    const routes = { home: 'home', teachers: 'teachers', schedule: 'schedule', absence: 'absence', reports: 'reports' };
+    const titles = { home: 'لوحة التحكم', teachers: 'إدارة المعلمين', schedule: 'الجدول العام للمدرسة', absence: 'تسجيل غياب', reports: 'تقارير الإحصاء والنسب' };
+    const fn = this[routes[x]];
+    if (typeof fn !== 'function') {
+      this.alert('تعذر فتح هذه الصفحة.');
+      return;
+    }
+    this._currentPage = x;
+    $('title').textContent = titles[x] || '';
+    if ($('header-ministry')) {
+      $('header-ministry').textContent = `${db.school.ministry} — ${db.school.name}`;
+    }
+    if ($('headerPrintBtn')) $('headerPrintBtn').classList.toggle('hidden', x === 'schedule');
+    if ($('headerExcelBtn')) $('headerExcelBtn').classList.toggle('hidden', x === 'home' || x === 'teachers' || x === 'schedule');
+    currentPage(x);
+    try {
+      fn.call(this);
+    } catch (err) {
+      console.error('Page render error:', x, err);
+      $('app').innerHTML = `
+        <section class="bg-white rounded-3xl p-8 card-shadow border border-red-100 max-w-4xl mx-auto">
+          <div class="text-red-600 font-extrabold text-xl mb-2">تعذر فتح صفحة ${esc(titles[x]||x)}</div>
+          <p class="text-slate-600 mb-4">حدث خطأ أثناء تحميل الصفحة. اضغط الزر لإعادة فتحها.</p>
+          <button onclick="App.page('${x}')" class="bg-emerald-600 text-white px-5 py-3 rounded-xl font-bold">إعادة فتح الصفحة</button>
+        </section>`;
+    }
+  },
+
+  home() {
+    const subjects = subjectOrder();
+    const groups = subjects.map(subject => ({
+      subject,
+      teachers: db.teachers
+        .filter(t => groupSubject(t.id) === subject)
+        .sort((a,b) => a.name.localeCompare(b.name, 'ar'))
+    })).filter(g => g.teachers.length);
+
+    const noSubject = db.teachers.filter(t => primarySubject(t.id) === 'غير محدد');
+    if (noSubject.length) groups.push({subject:'غير محدد', teachers:noSubject});
+
+    const subjectColorMap = buildSubjectColorMap();
+
+    const candidate = activeTeachers()
+      .filter(t => (db.cnt[t.id] || 0) < (t.quota || 0))
+      .sort((a,b) => {
+        const qa = Number(a.quota) || 0, qb = Number(b.quota) || 0;
+        const pa = qa > 0 ? (db.cnt[a.id] || 0) / qa : Infinity;
+        const pb = qb > 0 ? (db.cnt[b.id] || 0) / qb : Infinity;
+        if (pa !== pb) return pa - pb;
+        return (db.cnt[a.id] || 0) - (db.cnt[b.id] || 0);
+      })[0];
+
+    const renderScheduleTable = (group) => {
+      const groupSubjects = [...new Set(group.teachers.flatMap(t => teacherSubjectStats(t.id).map(x => x[0])))]
+        .filter(Boolean).sort((a,b) => a.localeCompare(b, 'ar'));
+      return `
+      <section class="bg-white rounded-3xl p-5 card-shadow border border-slate-100 mb-6">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div>
+            <h3 class="font-extrabold text-lg text-slate-900">📚 ${esc(group.subject)}</h3>
+            <p class="text-xs text-slate-500">${group.teachers.length} معلم — كل مادة فعلية بلون ثابت داخل الجدول</p>
+          </div>
+          ${isSkillSubject(group.subject) ? '<span class="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold">مادة مهارية</span>' : '<span class="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold">مادة دراسية</span>'}
+        </div>
+        ${renderSubjectLegend(subjectColorMap, groupSubjects)}
+        <div class="overflow-x-auto rounded-2xl border border-slate-200">
+          <table class="w-full text-[11px] text-right border-collapse">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200">
+                <th rowspan="2" class="p-3 sticky right-0 z-20 bg-slate-50 border-l border-slate-200 min-w-[190px]">المعلم</th>
+                ${DAYS.map(d => `<th colspan="8" class="p-2 text-center border-l border-slate-200">${d}</th>`).join('')}
+              </tr>
+              <tr class="bg-slate-100/70 border-b border-slate-200">
+                ${DAYS.map(() => PERIODS.map(p => `<th class="p-2 text-center border-l border-slate-200 font-semibold">${p}</th>`).join('')).join('')}
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${group.teachers.map(t => `
+                <tr class="hover:bg-slate-50/80">
+                  <td class="p-3 font-bold sticky right-0 z-10 bg-white border-l border-slate-200">
+                    <div class="flex items-center justify-between gap-2">
+                      <span>${esc(t.name)}</span>
+                      <span class="no-print flex items-center gap-1 shrink-0">
+                        <button onclick="App.openTeacherSchedule(${t.id})" title="فتح جدول المعلم وتعديله" class="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs flex items-center justify-center">✏️</button>
+                        <button onclick="App.delT(${t.id})" title="حذف المعلم" class="w-6 h-6 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs flex items-center justify-center">🗑️</button>
+                      </span>
+                    </div>
+                    <div class="mt-1 flex gap-2 text-[10px] items-center">
+                      <span class="text-[10px] text-slate-500">${teacherLessons(t.id).length} فعلي</span>
+                      <span class="text-emerald-700 font-bold">احتياط: ${db.cnt[t.id] || 0}</span>
+                      <span class="text-slate-400">/ ${t.quota ?? 0}</span>
+                    </div>
+                  </td>
+                  ${DAYS.map(d => PERIODS.map(p => {
+                    const l = lesson(t.id,d,p);
+                    const f = isFreed(t.id,d,p);
+                    const shared = sharedInfoFor(t.id,d,p);
+                    const c = l.sub ? (subjectColorMap[l.sub] || { bg: '#e2e8f0', text: '#1e293b' }) : null;
+                    const cellStyle = (!f && c) ? `background:${c.bg};color:${c.text};` : '';
+                    const tooltip = l.sub ? esc(l.sub) + (l.cl ? ' — ' + esc(l.cl) : '') : '';
+                    return `<td class="p-1 border-l border-slate-100 align-top ${f ? 'bg-amber-50/80' : ''}">
+                      <button onclick="App.editL(${t.id},'${d}',${p})" title="${tooltip}" style="${cellStyle}" class="w-full min-w-[36px] min-h-[70px] rounded-lg p-1 hover:opacity-80 transition-opacity flex items-center justify-center font-bold">
+                        ${l.sub ? `<div style="writing-mode: vertical-rl; text-orientation: mixed; white-space: nowrap; transform: rotate(180deg);" class="text-[10px]">${esc(l.sub)}${l.cl ? ' - ' + esc(l.cl) : ''}${shared ? ' 🔗' : ''}${f ? ' 🟠' : ''}</div>` : '<span class="text-slate-300">—</span>'}
+                      </button>
+                    </td>`;
+                  }).join('')).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </section>`;
+    };
+
+    const academicGroups = groups.filter(g => !isSkillSubject(g.subject));
+    const skillGroups = groups.filter(g => isSkillSubject(g.subject));
+
+    const printHeader = `
+      <div class="print-only report-header mb-6 text-center border-b pb-4">
+        <div class="flex items-center justify-between items-center mb-4">
+          <div class="text-right text-xs">
+            <div>${esc(db.school.ministry)}</div>
+            <div>${esc(db.school.name)}</div>
+          </div>
+          <div class="text-center">
+            ${db.school.logo ? `<img src="${esc(db.school.logo)}" class="w-14 h-14 object-contain mx-auto mb-1">` : ''}
+            <h2 class="text-lg font-black text-slate-900">جدول حصص المعلمين (الأحد - الخميس)</h2>
+          </div>
+          <div class="text-left text-xs text-slate-500">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-OM')}</div>
+        </div>
+      </div>`;
+
+    $('app').innerHTML = `
+      <div class="no-print">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        ${this.card('👨‍🏫', 'إجمالي المعلمين', db.teachers.length, 'منظومة التدريس', 'bg-blue-50 text-blue-600')}
+        ${this.card('📝', 'إجمالي الاحتياطات', db.log.length, 'الحصص المسندة', 'bg-emerald-50 text-emerald-600')}
+        ${this.card('⛔', 'المستبعدون', db.teachers.filter(t => !t.active).length, 'حالة الإيقاف المؤقت', 'bg-rose-50 text-rose-600')}
+        ${this.card('⚖️', 'المرشح القادم', candidate ? esc(candidate.name) : 'لا يوجد', 'الأقل احتياطًا ضمن الحد', 'bg-amber-50 text-amber-600')}
+      </div>
+
+      <section class="bg-white rounded-3xl p-6 card-shadow border border-slate-100 mb-6 flex items-center justify-between flex-wrap gap-4">
+        <div class="flex items-center gap-4">
+          ${db.school.logo ? `<img src="${esc(db.school.logo)}" alt="شعار المدرسة" class="w-14 h-14 object-contain rounded-xl border border-slate-100 p-1 bg-slate-50">` : `<div class="w-14 h-14 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-xl">🏫</div>`}
+          <div>
+            <div class="text-xs font-bold text-emerald-600">${esc(db.school.ministry)}</div>
+            <h3 class="font-extrabold text-xl text-slate-900">${esc(db.school.name)}</h3>
+          </div>
+        </div>
+        <button onclick="App.openSchoolSettings()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-sm font-semibold">⚙️ تعديل اسم المدرسة والشعار</button>
+      </section>
+
+      <section class="bg-white rounded-3xl p-6 card-shadow border border-slate-100 mb-6 flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h3 class="font-extrabold text-xl text-slate-900">⚖️ العدالة في توزيع الاحتياط</h3>
+          <p class="text-xs text-slate-500 mt-1">يعتمد التوزيع الآلي على نسبة الحصص المأخوذة إلى الحد المسموح لكل معلم، وليس على العدد المطلق فقط.</p>
+        </div>
+        <button onclick="App.page('reports')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold">📊 تقارير الإحصاء</button>
+      </section>
+
+      </div>
+
+      ${printHeader}
+      ${academicGroups.length ? `<div class="mb-4"><h2 class="text-xl font-extrabold text-slate-900">المواد الدراسية</h2></div>${academicGroups.map(renderScheduleTable).join('')}` : '<div class="bg-white rounded-3xl p-8 text-center text-slate-400 mb-6">ارفع جدول المعلمين أولًا لإظهار المواد والجداول.</div>'}
+
+      ${skillGroups.length ? `<div class="mt-8 mb-4"><h2 class="text-xl font-extrabold text-indigo-800">🎨 المواد المهارية</h2></div>${skillGroups.map(renderScheduleTable).join('')}` : ''}
+    `;
+  },
+
+  card(icon, label, value, subtext, colorClass) {
+    return `
+      <div class="bg-white rounded-3xl p-5 card-shadow border border-slate-100 flex items-center gap-4">
+        <div class="w-14 h-14 rounded-2xl ${colorClass} flex items-center justify-center text-2xl font-bold shrink-0 shadow-sm">${icon}</div>
+        <div>
+          <div class="text-slate-400 text-xs font-semibold">${subtext}</div>
+          <div class="text-slate-500 text-sm font-medium mt-0.5">${label}</div>
+          <div class="text-2xl font-black text-slate-900 mt-1">${value}</div>
+        </div>
+      </div>
+    `;
+  },
+
+  teachers() {
+    const subjects = subjectOrder();
+    const academic = subjects.filter(x => !isSkillSubject(x));
+    const skills = subjects.filter(x => isSkillSubject(x));
+    const renderGroup = subject => {
+      const list = db.teachers
+        .filter(t => groupSubject(t.id) === subject)
+        .sort((a,b) => a.name.localeCompare(b.name, 'ar'));
+      return `
+        <section class="mb-7">
+          <div class="flex items-center justify-between mb-3">
+            <h4 class="font-extrabold text-lg text-slate-900">📚 ${esc(subject)}</h4>
+            <span class="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full">${list.length} معلم</span>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            ${list.map(t => {
+              const lessonsCount = teacherLessons(t.id).length;
+              const stats = teacherSubjectStats(t.id);
+              return `
+                <div class="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-5 hover:border-emerald-300 transition-all">
+                  <div class="flex items-start gap-3">
+                    <div class="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-700 font-bold flex items-center justify-center shrink-0">👨‍🏫</div>
+                    <div class="flex-1 min-w-0">
+                      <input value="${esc(t.name)}" onchange="App.rename(${t.id},this.value)" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold text-slate-800 outline-none focus:border-emerald-500">
+                      <div class="flex flex-wrap gap-1.5 mt-2">
+                        ${stats.map(([sub,n]) => `<span class="text-[10px] px-2 py-1 rounded-full bg-white border border-slate-200 text-slate-600">${esc(sub)}: ${n}</span>`).join('')}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-slate-200/70">
+                    <div class="rounded-xl bg-white p-3 text-center border border-slate-100">
+                      <div class="text-[10px] text-slate-400">الحصص الفعلية</div>
+                      <div class="text-xl font-black text-slate-900">${lessonsCount}</div>
+                    </div>
+                    <div class="rounded-xl bg-emerald-50 p-3 text-center border border-emerald-100">
+                      <div class="text-[10px] text-emerald-700">الاحتياط المأخوذ</div>
+                      <div class="text-xl font-black text-emerald-700">${db.cnt[t.id] || 0}</div>
+                    </div>
+                    <label class="rounded-xl bg-amber-50 p-3 text-center border border-amber-100">
+                      <div class="text-[10px] text-amber-700">حد الاحتياط</div>
+                      <input type="number" min="0" value="${t.quota ?? 0}" onchange="App.setQuota(${t.id},this.value)" class="w-full mt-1 text-center font-black text-lg bg-transparent outline-none">
+                    </label>
+                  </div>
+                  <div class="flex items-center justify-between mt-4">
+                    <label class="text-xs font-semibold text-slate-600 flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" ${t.active ? 'checked' : ''} onchange="App.toggle(${t.id},this.checked)" class="w-4 h-4 accent-emerald-600"> مشارك في الاحتياط
+                    </label>
+                    <div class="flex gap-2">
+                      <button onclick="App.openTeacherSchedule(${t.id})" class="text-emerald-600 hover:bg-emerald-50 px-3 py-1.5 rounded-lg text-xs font-semibold">📅 الجدول</button>
+                      <button onclick="App.delT(${t.id})" class="text-rose-500 hover:bg-rose-50 px-3 py-1.5 rounded-lg text-xs font-semibold">حذف</button>
+                    </div>
+                  </div>
+                </div>`;
+            }).join('')}
+          </div>
+        </section>`;
+    };
+
+    const skillHeader = skills.length ? `<div class="mt-10 mb-5 p-4 rounded-2xl bg-indigo-50 border border-indigo-100"><h3 class="font-extrabold text-xl text-indigo-900">🎨 المواد المهارية</h3><p class="text-sm text-indigo-700 mt-1">تظهر في أسفل إدارة المعلمين كما طلبت.</p></div>` : '';
+
+    const printSubjectColorMap = buildSubjectColorMap();
+    const printLegendSubjects = allActualSubjects();
+    const printSchedules = `
+      <div class="print-only">
+        <div class="report-header mb-6 text-center border-b pb-4">
+          <div class="flex items-center justify-between items-center mb-4">
+            <div class="text-right text-xs">
+              <div>${esc(db.school.ministry)}</div>
+              <div>${esc(db.school.name)}</div>
+            </div>
+            <div class="text-center">
+              ${db.school.logo ? `<img src="${esc(db.school.logo)}" class="w-14 h-14 object-contain mx-auto mb-1">` : ''}
+              <h2 class="text-lg font-black text-slate-900">جداول حصص المعلمين (الأحد - الخميس)</h2>
+            </div>
+            <div class="text-left text-xs text-slate-500">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-OM')}</div>
+          </div>
+        </div>
+        ${renderSubjectLegend(printSubjectColorMap, printLegendSubjects)}
+        ${db.teachers.slice().sort((a,b) => a.name.localeCompare(b.name,'ar')).map(t => `
+          <div style="page-break-inside: avoid; margin-bottom: 22px;">
+            <h3 style="font-weight:800; font-size:13px; margin-bottom:6px;">${esc(t.name)} — ${esc(primarySubject(t.id))}</h3>
+            <table style="width:100%; border-collapse:collapse; font-size:10.5px;">
+              <thead>
+                <tr>
+                  <th style="border:1px solid #cbd5e1; padding:4px; background:#f8fafc;">الحصة</th>
+                  ${DAYS.map(d => `<th style="border:1px solid #cbd5e1; padding:4px; background:#f8fafc;">${d}</th>`).join('')}
+                </tr>
+              </thead>
+              <tbody>
+                ${PERIODS.map(p => `
+                  <tr>
+                    <td style="border:1px solid #cbd5e1; padding:4px; text-align:center; font-weight:700;">${p}</td>
+                    ${DAYS.map(d => {
+                      const l = lesson(t.id, d, p);
+                      const c = l.sub ? (printSubjectColorMap[l.sub] || { bg: '#f1f5f9', text: '#1e293b' }) : null;
+                      const style = c ? `background:${c.bg};color:${c.text};font-weight:700;` : '';
+                      return `<td style="border:1px solid #cbd5e1; padding:4px; text-align:center;${style}">${l.sub ? esc(l.sub) : '—'}</td>`;
+                    }).join('')}
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>`).join('') || '<div>لا يوجد معلمون مسجّلون بعد.</div>'}
+      </div>`;
+
+    $('app').innerHTML = `
+      <section class="no-print bg-white rounded-3xl p-6 md:p-8 card-shadow border border-slate-100">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+          <div>
+            <h3 class="font-bold text-2xl text-slate-900">إدارة المعلمين حسب التخصص</h3>
+            <p class="text-sm text-slate-500 mt-1">يتم استخراج التخصص من المادة الفعلية في الجدول، مع عرض عدد الحصص الفعلية والاحتياط المأخوذ والحد المسموح.</p>
+          </div>
+          <button onclick="App.addT()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-3 rounded-2xl font-semibold">➕ إضافة معلم</button>
+        </div>
+
+        ${academic.length ? academic.map(renderGroup).join('') : '<div class="py-10 text-center text-slate-400">لم يتم استيراد جدول المعلمين بعد.</div>'}
+        ${skillHeader}
+        ${skills.map(renderGroup).join('')}
+      </section>
+      ${printSchedules}
+    `;
+  },
+
+  addT() {
+    this.openM('إضافة معلم جديد', `
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-2">اسم المعلم</label>
+          <input id="newTeacherName" type="text" placeholder="مثال: أ. محمد أحمد" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium text-slate-800">
+        </div>
+        <button onclick="App.confirmAddTeacher()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-3.5 rounded-xl font-semibold shadow-md shadow-emerald-600/20 transition-all">حفظ وإضافة</button>
+      </div>
+    `);
+  },
+  confirmAddTeacher() {
+    const name = $('newTeacherName')?.value?.trim();
+    if (!name) { this.alert('الرجاء إدخال اسم المعلم بشكل صحيح.'); return; }
+    const id = Date.now();
+    db.teachers.push({ id, name, active: true, quota: 3 });
+    db.cnt[id] = 0;
+    save();
+    this.closeM();
+    this.teachers();
+  },
+  rename(id, n) { const t = db.teachers.find(t => t.id == id); if (t) { t.name = n.trim() || t.name; save(); } },
+
+  openTeacherSchedule(id) {
+    this.renderTeacherScheduleModal(id);
+  },
+
+  renderTeacherScheduleModal(id) {
+    const t = db.teachers.find(x => x.id == id);
+    if (!t) return;
+    this.openM(`جدول المعلم: ${esc(t.name)}`, `
+      <div class="space-y-4">
+        <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center bg-slate-50 border border-slate-200 rounded-xl p-3">
+          <input id="tsNameInput" value="${esc(t.name)}" class="flex-1 border border-slate-200 rounded-xl p-2.5 outline-none focus:border-emerald-500 font-bold text-slate-800">
+          <button onclick="App.saveTeacherScheduleName(${id})" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold">حفظ الاسم</button>
+        </div>
+        <p class="text-xs text-slate-500">اضغط على أي حصة لإضافتها أو تعديلها، أو لحذفها من الجدول.</p>
+        <div class="overflow-x-auto rounded-2xl border border-slate-200">
+          <table class="w-full text-[11px] text-right border-collapse">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200">
+                <th class="p-2 sticky right-0 z-10 bg-slate-50 border-l border-slate-200">الحصة</th>
+                ${DAYS.map(d => `<th class="p-2 text-center border-l border-slate-200">${d}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${PERIODS.map(p => `
+                <tr>
+                  <td class="p-2 font-bold text-center sticky right-0 z-10 bg-white border-l border-slate-200">${p}</td>
+                  ${DAYS.map(d => {
+                    const l = lesson(id, d, p);
+                    const f = isFreed(id, d, p);
+                    return `<td class="p-1 border-l border-slate-100 align-top ${f ? 'bg-amber-50/80' : ''}">
+                      <button onclick="App.editCellInModal(${id},'${d}',${p})" class="w-full min-w-[70px] min-h-[46px] rounded-lg p-1 hover:bg-emerald-50 text-center">
+                        ${l.sub ? `<div class="font-bold text-slate-800 line-clamp-2">${esc(l.sub)}</div><div class="text-[10px] text-slate-500">${esc(l.cl)}</div>${f ? '<div class="text-[9px] text-amber-700 font-bold">مفرغ</div>' : ''}` : '<span class="text-emerald-600 text-lg">+</span>'}
+                      </button>
+                    </td>`;
+                  }).join('')}
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div class="flex justify-end">
+          <button onclick="App.closeM(); App.page(App._currentPage || 'teachers');" class="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold">إغلاق</button>
+        </div>
+      </div>
+    `);
+  },
+
+  saveTeacherScheduleName(id) {
+    const v = $('tsNameInput')?.value?.trim();
+    if (!v) { this.alert('الرجاء إدخال اسم صحيح للمعلم.'); return; }
+    this.rename(id, v);
+    this.page(this._currentPage || 'teachers');
+    this.renderTeacherScheduleModal(id);
+  },
+
+  editCellInModal(id, d, p) {
+    const l = lesson(id, d, p), freed = isFreed(id, d, p);
+    const t = db.teachers.find(x => x.id == id);
+    this.openM(`تعديل حصة — ${esc(t?.name || '')}`, `
+      <div class="text-sm font-semibold text-slate-500 mb-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
+        <span class="text-emerald-700">${d}</span> — الحصة ${p}
+      </div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">المادة</label>
+          <input id="cms" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium" placeholder="اسم المادة" value="${esc(l.sub)}">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">الفصل / الشعبة</label>
+          <input id="cmc" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium" placeholder="مثال: أول ثانوي أ" value="${esc(l.cl)}">
+        </div>
+        <label class="flex items-center gap-3 p-3 bg-amber-50/50 border border-amber-200/60 rounded-xl cursor-pointer">
+          <input id="cmf" type="checkbox" ${freed ? 'checked' : ''} class="w-4 h-4 accent-amber-600 rounded">
+          <span class="text-sm font-semibold text-amber-900">تفريغ المعلم في هذه الحصة (استثناء من الاحتياط)</span>
+        </label>
+        <div class="flex gap-3">
+          <button onclick="App.saveCellInModal(${id},'${d}',${p})" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white p-3.5 rounded-xl font-semibold shadow-md shadow-emerald-600/20 transition-all">حفظ</button>
+          ${l.sub || l.cl ? `<button onclick="App.deleteCellInModal(${id},'${d}',${p})" class="px-5 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 font-semibold">🗑️ حذف الحصة</button>` : ''}
+          <button onclick="App.renderTeacherScheduleModal(${id})" class="px-5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold">⬅️ رجوع</button>
+        </div>
+      </div>
+    `);
+  },
+
+  saveCellInModal(id, d, p) {
+    const sub = $('cms')?.value.trim() || '';
+    const cl = $('cmc')?.value.trim() || '';
+    if (sub || cl) db.s[key(id, d, p)] = { sub, cl }; else delete db.s[key(id, d, p)];
+    if ($('cmf')?.checked) db.free[freeKey(id, d, p)] = true; else delete db.free[freeKey(id, d, p)];
+    save();
+    this.page(this._currentPage || 'teachers');
+    this.renderTeacherScheduleModal(id);
+  },
+
+  deleteCellInModal(id, d, p) {
+    delete db.s[key(id, d, p)];
+    delete db.free[freeKey(id, d, p)];
+    save();
+    this.page(this._currentPage || 'teachers');
+    this.renderTeacherScheduleModal(id);
+  },
+
+  setQuota(id, v) { const t = db.teachers.find(t => t.id == id); if (t) { t.quota = Math.max(0, +v || 0); save(); } },
+  toggle(id, v) { const t = db.teachers.find(t => t.id == id); if (t) { t.active = v; save(); } },
+  delT(id) {
+    this.confirm('هل أنت متأكد من حذف هذا المعلم نهائياً؟ سيتم حذف جميع حصصه المسجّلة في الجدول العام أيضًا.', () => {
+      db.teachers = db.teachers.filter(t => t.id != id);
+      delete db.cnt[id];
+      DAYS.forEach(d => PERIODS.forEach(p => {
+        delete db.s[key(id, d, p)];
+        delete db.free[freeKey(id, d, p)];
+      }));
+      if (db.schoolScheduleMeta) db.schoolScheduleMeta.teachers = db.teachers.length;
+      save();
+      this.page(this._currentPage || 'teachers');
+    }, 'حذف معلم');
+  },
+
+  schedule() {
+    $('app').innerHTML = `
+      <section class="bg-white rounded-3xl p-6 md:p-8 card-shadow border border-slate-100 mb-6">
+        <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+          <div>
+            <h3 class="font-bold text-2xl text-slate-900">رفع الجدول المدرسي</h3>
+            <p class="text-slate-500 text-sm mt-1">ارفع ملف الجدول العام بصيغة Excel (XLSX)، وسيتم استخراج جدول كل معلم تلقائياً.</p>
+          </div>
+          <div class="flex flex-wrap gap-3">
+            <label class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3.5 rounded-2xl cursor-pointer font-semibold shadow-lg transition-all flex items-center gap-2.5">
+              📂 رفع الجدول المدرسي
+              <input id="schoolFile" type="file" accept=".xlsx" class="hidden" onchange="App.readAnyScheduleFile(this)">
+            </label>
+          </div>
+        </div>
+
+        <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div class="bg-emerald-50/70 border border-emerald-100 rounded-2xl p-4">
+            <b class="text-emerald-900 block mb-1">📁 الصيغ المدعومة:</b>
+            <span class="text-emerald-700 text-xs">XLSX</span>
+          </div>
+          <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-4">
+            <b class="text-emerald-900 block mb-1">📊 التحليل الذكي:</b>
+            <span class="text-slate-600 text-xs">يتم استخراج أسماء المعلمين، الأيام، الحصص والفصول تلقائياً.</span>
+          </div>
+          <div class="bg-amber-50/70 border border-amber-100 rounded-2xl p-4">
+            <b class="text-amber-900 block mb-1">🟠 نظام التفريغ:</b>
+            <span class="text-amber-700 text-xs">إمكانية تفريغ الحصص يدويًا أو حسب المادة.</span>
+          </div>
+        </div>
+        <div id="importStatus" class="mt-4"></div>
+      </section>
+
+      <section class="bg-white rounded-3xl p-6 md:p-8 card-shadow border border-slate-100 mb-6">
+        <h3 class="font-bold text-xl text-slate-900 mb-4">إدارة التفريغ والاستثناءات</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <button onclick="App.openFreeManager()" class="bg-amber-500 hover:bg-amber-600 text-white px-5 py-3.5 rounded-2xl font-semibold shadow-md shadow-amber-500/10 transition-all flex items-center justify-center gap-2">🟠 تفريغ معلم يدويًا</button>
+          <button onclick="App.openSubjectFreeManager()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3.5 rounded-2xl font-semibold shadow-md shadow-indigo-600/10 transition-all flex items-center justify-center gap-2">🔵 تفريغ حسب المادة</button>
+          <button onclick="App.clearAllFree()" class="border border-rose-200 hover:bg-rose-50 text-rose-600 px-5 py-3.5 rounded-2xl font-semibold transition-all flex items-center justify-center gap-2">🧹 إلغاء كافة التفريغات</button>
+        </div>
+      </section>
+
+      <section class="bg-white rounded-3xl p-6 md:p-8 card-shadow border border-slate-100">
+        <h3 class="font-bold text-xl text-slate-900 mb-5">معاينة الجدول العام الحالي</h3>
+        <div id="schoolSchedulePreview"></div>
+      </section>
+    `;
+    this.renderSchoolPreview();
+  },
+
+  editL(id, d, p) {
+    const l = lesson(id, d, p), freed = isFreed(id, d, p);
+    const teacherName = db.teachers.find(t => t.id == id)?.name || '';
+    this.openM('تعديل الحصة / التفريغ', `
+      <div class="text-sm font-semibold text-slate-500 mb-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
+        ${esc(teacherName)} — <span class="text-emerald-700">${d}</span> — الحصة ${p}
+      </div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">المادة</label>
+          <input id="ms" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium" placeholder="اسم المادة" value="${esc(l.sub)}">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">الفصل / الشعبة</label>
+          <input id="mc" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium" placeholder="مثال: أول ثانوي أ" value="${esc(l.cl)}">
+        </div>
+        <label class="flex items-center gap-3 p-3 bg-amber-50/50 border border-amber-200/60 rounded-xl cursor-pointer">
+          <input id="mf" type="checkbox" ${freed ? 'checked' : ''} class="w-4 h-4 accent-amber-600 rounded">
+          <span class="text-sm font-semibold text-amber-900">تفريغ المعلم في هذه الحصة (استثناء من الاحتياط)</span>
+        </label>
+        <button onclick="App.saveL(${id},'${d}',${p})" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-3.5 rounded-xl font-semibold shadow-md shadow-emerald-600/20 transition-all">حفظ التعديلات</button>
+      </div>
+    `);
+  },
+
+  saveL(id, d, p) {
+    db.s[key(id, d, p)] = { sub: $('ms').value.trim(), cl: $('mc').value.trim() };
+    if ($('mf').checked) db.free[freeKey(id, d, p)] = true; else delete db.free[freeKey(id, d, p)];
+    save();
+    this.closeM();
+    this.schedule();
+  },
+
+  readAnyScheduleFile(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+    const ext = file.name.toLowerCase().split('.').pop();
+    if (ext === 'xml') return this.readXmlFile(input);
+    if (ext === 'pdf') return this.readPdfFile(input);
+    return this.readSchoolFile(input);
+  },
+
+  async readXmlFile(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+    const status = $('importStatus');
+    status.innerHTML = '<div class="p-4 rounded-2xl bg-indigo-50 border">📄 جاري تحليل ملف XML (aSc Timetables)...</div>';
+
+    try {
+      const text = await file.text();
+      const xml = new DOMParser().parseFromString(text, 'text/xml');
+      if (xml.querySelector('parsererror')) throw new Error('ملف XML غير صالح أو تالف.');
+
+      const teachers = {};
+      xml.querySelectorAll('teacher').forEach(t => {
+        const id = t.getAttribute('id');
+        const name = t.getAttribute('name') || t.getAttribute('short') || t.getAttribute('fullname') || t.textContent.trim();
+        if (id) teachers[id] = name || id;
+      });
+
+      const subjects = {};
+      xml.querySelectorAll('subject').forEach(s => {
+        const id = s.getAttribute('id');
+        const name = s.getAttribute('name') || s.getAttribute('short') || s.textContent.trim();
+        if (id) subjects[id] = name || id;
+      });
+
+      const classes = {};
+      xml.querySelectorAll('class').forEach(c => {
+        const id = c.getAttribute('id');
+        const name = c.getAttribute('name') || c.getAttribute('short') || c.textContent.trim();
+        if (id) classes[id] = name || id;
+      });
+
+      const daysList = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
+      const daysdefs = {};
+      xml.querySelectorAll('daysdef').forEach(d => {
+        daysdefs[d.getAttribute('id')] = d.getAttribute('days');
+      });
+
+      const lessons = {};
+      xml.querySelectorAll('lesson').forEach(l => {
+        const id = l.getAttribute('id');
+        // Handle teacherids, teacher, teacherid
+        let teacherids = [];
+        const tRaw = l.getAttribute('teacherids') || l.getAttribute('teacher') || l.getAttribute('teacherid') || '';
+        teacherids.push(...tRaw.split(/[, ;]+/).map(x => x.trim()).filter(Boolean));
+        l.querySelectorAll('teacherid, teacher').forEach(e => {
+          const v = (e.getAttribute('id') || e.textContent || '').trim();
+          if (v) teacherids.push(...v.split(/[, ;]+/).filter(Boolean));
+        });
+        teacherids = [...new Set(teacherids)];
+
+        const subjectid = l.getAttribute('subjectid') || l.getAttribute('subject') ||
+          l.querySelector('subjectid, subject')?.textContent?.trim();
+
+        let classids = [];
+        const cRaw = l.getAttribute('classids') || l.getAttribute('class') || l.getAttribute('classid') || '';
+        classids.push(...cRaw.split(/[, ;]+/).map(x => x.trim()).filter(Boolean));
+        l.querySelectorAll('classid, class').forEach(e => {
+          const v = (e.getAttribute('id') || e.textContent || '').trim();
+          if (v) classids.push(...v.split(/[, ;]+/).filter(Boolean));
+        });
+        classids = [...new Set(classids)];
+        const daysdefid = l.getAttribute('daysdefid');
+        const periodsStr = l.getAttribute('periods') || l.getAttribute('period');
+        lessons[id] = { teacherids, subjectid, classids, daysdefid, periodsStr };
+      });
+
+      const rows = [];
+
+      const cards = xml.querySelectorAll('card');
+      if (cards.length > 0) {
+        cards.forEach(card => {
+          const lessonid = card.getAttribute('lessonid') || card.getAttribute('lesson');
+          const dayIndex = Number(card.getAttribute('day') ?? card.getAttribute('dayid') ?? 0);
+          const period = Number(card.getAttribute('period') ?? card.getAttribute('periodid') ?? 1);
+          const l = lessons[lessonid];
+          if (l) {
+            const sub = subjects[l.subjectid] || 'اسم المادة';
+            const cl = l.classids.map(cid => classes[cid] || cid).join(' / ');
+            const dayName = daysList[dayIndex] || DAYS[dayIndex % 5];
+            l.teacherids.forEach(tid => {
+              const teacherName = teachers[tid] || tid;
+              if (teacherName) {
+                rows.push({
+                  teacher: teacherName,
+                  day: dayName,
+                  period: period > 0 ? period : 1,
+                  sub,
+                  cl
+                });
+              }
+            });
+          }
+        });
+      }
+
+      if (rows.length === 0) {
+        Object.values(lessons).forEach(l => {
+          const sub = subjects[l.subjectid] || 'اسم المادة';
+          const cl = l.classids.map(cid => classes[cid] || cid).join(' / ');
+          const daysMask = daysdefs[l.daysdefid] || '11111';
+          
+          const activePeriods = [];
+          if (l.periodsStr) {
+            [...l.periodsStr].forEach((char, idx) => {
+              if (char === '1' || char === 'x' || char === 'X') activePeriods.push(idx + 1);
+            });
+          }
+          if (activePeriods.length === 0) activePeriods.push(1);
+
+          [...daysMask].forEach((char, dayIdx) => {
+            if (char === '1') {
+              const dayName = daysList[dayIdx] || DAYS[dayIdx % 5];
+              activePeriods.forEach(p => {
+                l.teacherids.forEach(tid => {
+                  const teacherName = teachers[tid] || tid;
+                  if (teacherName) {
+                    rows.push({
+                      teacher: teacherName,
+                      day: dayName,
+                      period: p,
+                      sub,
+                      cl
+                    });
+                  }
+                });
+              });
+            }
+          });
+        });
+      }
+
+      if (rows.length === 0) {
+        throw new Error('لم يتم العثور على حصص دراسية مطابقة في ملف XML.');
+      }
+
+      window.pendingSchoolRows = rows;
+      const teacherCount = [...new Set(rows.map(x => x.teacher))].length;
+
+      status.innerHTML = `
+        <div class="border border-emerald-200 bg-emerald-50/80 rounded-2xl p-5">
+          <b class="text-emerald-900 text-lg block mb-1">✅ تمت قراءة ملف XML (${rows.length} حصة) بنجاح!</b>
+          <div class="text-sm text-emerald-800 mb-4">عدد المعلمين المكتشفين: <span class="font-bold">${teacherCount}</span></div>
+          <div class="flex gap-3">
+            <button onclick="App.confirmSchoolImport()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-md transition-all">اعتماد وحفظ الجدول</button>
+            <button onclick="App.cancelSchoolImport()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-5 py-2.5 rounded-xl font-semibold transition-all">إلغاء</button>
+          </div>
+        </div>
+      `;
+      this.renderImportPreview(rows.slice(0, 40));
+
+    } catch (err) {
+      console.error(err);
+      status.innerHTML = `<div class="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 font-medium">❌ تعذر قراءة ملف XML: ${esc(err.message)}</div>`;
+    }
+  },
+
+  async readPdfFile(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const status = $('importStatus');
+    status.innerHTML = '<div class="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 font-medium text-indigo-800">📄 جاري تحليل صفحات PDF واستخراج جدول كل معلم...</div>';
+
+    try {
+      if (typeof pdfjsLib === 'undefined') {
+        throw new Error('مكتبة قراءة PDF لم تُحمّل. افتح الملف مع اتصال بالإنترنت ثم حاول مرة أخرى.');
+      }
+
+      const arrayBuffer = await file.arrayBuffer();
+      const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const parsed = [];
+      let scannedTextItems = 0;
+
+      for (let pageNo = 1; pageNo <= pdfDoc.numPages; pageNo++) {
+        const page = await pdfDoc.getPage(pageNo);
+        const viewport = page.getViewport({ scale: 1 });
+        const textContent = await page.getTextContent();
+
+        const items = textContent.items
+          .filter(it => (it.str || '').trim())
+          .map(it => {
+            const x = it.transform[4];
+            const yTop = viewport.height - it.transform[5];
+            const width = Math.abs(it.width || 0);
+            return {
+              str: (it.str || '').trim(),
+              x,
+              y: yTop,
+              cx: x + width / 2,
+              width
+            };
+          });
+
+        scannedTextItems += items.length;
+        parsed.push(...this.parseAScPdfPage(items, viewport.width, viewport.height, pageNo));
+      }
+
+      const unique = [];
+      const seen = new Set();
+      parsed.forEach(r => {
+        const k = [r.teacher, r.day, r.period, r.cl, r.sub].join('|');
+        if (!seen.has(k)) {
+          seen.add(k);
+          unique.push(r);
+        }
+      });
+
+      if (!unique.length) {
+        throw new Error(`تم فتح PDF بنجاح (${pdfDoc.numPages} صفحات و${scannedTextItems} عنصر نصي)، لكن لم يتم التعرف على شبكات aSc. أعد رفع ملف الجدول الأصلي.`);
+      }
+
+      const teacherCount = [...new Set(unique.map(x => x.teacher))].length;
+      if (teacherCount < 2) {
+        throw new Error(`تم التعرف على ${teacherCount} معلم فقط؛ لم يتم اعتماد القراءة.`);
+      }
+
+      window.pendingSchoolRows = unique;
+
+      status.innerHTML = `
+        <div class="border border-indigo-200 bg-indigo-50/80 rounded-2xl p-5">
+          <b class="text-indigo-900 text-lg block mb-1">✅ تمت قراءة الجدول العام من PDF</b>
+          <div class="grid sm:grid-cols-3 gap-3 text-sm text-indigo-900 mt-3">
+            <div class="bg-white/70 rounded-xl p-3"><b>${teacherCount}</b><br>معلم مكتشف</div>
+            <div class="bg-white/70 rounded-xl p-3"><b>${unique.length}</b><br>حصة فعلية مكتشفة</div>
+            <div class="bg-white/70 rounded-xl p-3"><b>${pdfDoc.numPages}</b><br>صفحات PDF</div>
+          </div>
+          <p class="text-xs text-indigo-700 mt-3">تمت قراءة كل شبكة معلم مستقلة وربطها باليوم والحصة والفصل والمادة. راجع المعاينة قبل الاعتماد.</p>
+          <div class="flex gap-3 mt-4">
+            <button onclick="App.confirmSchoolImport()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-md transition-all">اعتماد وحفظ الجدول</button>
+            <button onclick="App.cancelSchoolImport()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-5 py-2.5 rounded-xl font-semibold transition-all">إلغاء</button>
+          </div>
+        </div>`;
+      this.renderImportPreview(unique.slice(0, 80));
+    } catch (err) {
+      console.error(err);
+      status.innerHTML = `<div class="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 font-medium">❌ تعذر قراءة ملف PDF: ${esc(err.message)}</div>`;
+    }
+  },
+
+  parseAScPdfPage(items, pageWidth, pageHeight, pageNo) {
+    const out = [];
+    const DAYS = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس'];
+    const classRe = /^\d{1,2}\s*\/\s*\d{1,2}$/;
+    const periodRe = /^[1-8]$/;
+
+    const clean = s => String(s || '')
+      .replace(/\uFDF2/g,'الله')
+      .replace(/\uFEF2/g,'الله')
+      .replace(/\s+/g,' ')
+      .trim();
+
+    const normalizeClass = s => clean(s).replace(/\s+/g,'');
+    const isArabic = s => /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s || '');
+
+    const fixName = s => clean(s)
+      .replace(/ه\s*ﻼل|ه\s*ل/g,'هلال')
+      .replace(/عبد\s*ﷲ|عبد\s*الله/g,'عبدالله')
+      .replace(/\s+/g,' ')
+      .trim();
+
+    const fixSubject = s => {
+      const x = clean(s);
+      if (/التربية.*اسلامية|التربية.*إسلامية/i.test(x)) return 'التربية الإسلامية';
+      if (/اللغة.*العربية/i.test(x)) return 'اللغة العربية';
+      if (/اللغة.*انجليزية|اللغة.*إنجليزية/i.test(x)) return 'اللغة الإنجليزية';
+      if (/الدراسات.*اجتماعية|الدراسات.*إجتماعية/i.test(x)) return 'الدراسات الاجتماعية';
+      return x;
+    };
+
+    const its = (items || []).map((it, idx) => ({
+      i: idx,
+      str: clean(it.str),
+      x: Number(it.x) || 0,
+      y: Number(it.y) || 0,
+      cx: Number(it.cx) || ((Number(it.x)||0) + (Number(it.width)||0)/2),
+      width: Number(it.width) || 0
+    })).filter(x => x.str);
+
+    const rowHeight = pageHeight / 3;
+    const arabicGroups = [];
+    its.filter(x => isArabic(x.str)).forEach(it => {
+      let g = arabicGroups.find(z => Math.abs(z.y - it.y) <= 1.5);
+      if (!g) {
+        g = { y: it.y, items: [] };
+        arabicGroups.push(g);
+      }
+      g.items.push(it);
+    });
+
+    const titleGroups = [];
+    for (let r = 0; r < 3; r++) {
+      const target = r * rowHeight + 10;
+      const candidates = arabicGroups
+        .filter(g => Math.abs(g.y - target) < 14 && g.items.length >= 2)
+        .sort((a,b) => Math.abs(a.y-target) - Math.abs(b.y-target));
+      if (candidates[0]) titleGroups.push(candidates[0]);
+    }
+
+    if (titleGroups.length < 3) {
+      arabicGroups
+        .filter(g => g.items.length >= 2)
+        .sort((a,b) => a.y-b.y)
+        .forEach(g => {
+          const r = Math.floor(g.y / rowHeight);
+          if (r >= 0 && r < 3 && g.y < r*rowHeight + 28 && !titleGroups.some(x=>Math.abs(x.y-g.y)<5)) {
+            titleGroups.push(g);
+          }
+        });
+      titleGroups.sort((a,b)=>a.y-b.y);
+    }
+
+    titleGroups.slice(0,3).forEach(titleGroup => {
+      const titleY = titleGroup.y;
+
+      for (let col = 0; col < 3; col++) {
+        const left = col * (pageWidth/3);
+        const right = (col+1) * (pageWidth/3);
+
+        const nameItems = titleGroup.items
+          .filter(it => it.x >= left-2 && it.x <= right+2)
+          .sort((a,b)=>b.x-a.x);
+
+        let teacher = fixName(nameItems.map(x=>x.str).join(' '));
+        if (!teacher || teacher.length < 3) continue;
+
+        if (/ALBATINAH|MAWALAH|SHAMS|Timetables|الجدول|إنشاء/i.test(teacher)) continue;
+
+        const periodItems = its.filter(it =>
+          it.x >= left-2 && it.x <= right+2 &&
+          it.y > titleY + 10 && it.y < titleY + 34 &&
+          periodRe.test(it.str)
+        );
+
+        const periodCenters = periodItems
+          .sort((a,b)=>a.cx-b.cx)
+          .map(it=>({p:+it.str,cx:it.cx}));
+
+        const uniquePeriods = [];
+        periodCenters.forEach(x=>{if(!uniquePeriods.some(y=>y.p===x.p))uniquePeriods.push(x)});
+        uniquePeriods.sort((a,b)=>a.p-b.p);
+        if (uniquePeriods.length < 8) {
+          const gridWidth = right-left;
+          const fallback = [];
+          for(let p=1;p<=8;p++) fallback.push({p,cx:right-gridWidth*((p-0.5)/8)});
+          uniquePeriods.length = 0;
+          fallback.forEach(x=>uniquePeriods.push(x));
+        }
+
+        const cells = its.filter(it =>
+          it.x >= left-2 && it.x <= right+2 &&
+          it.y > titleY + 30 && it.y < titleY + rowHeight - 8 &&
+          classRe.test(normalizeClass(it.str))
+        );
+
+        cells.forEach(cell => {
+          const rowCandidates = [];
+          for(let d=0; d<5; d++){
+            rowCandidates.push(titleY + 42 + d*30.4);
+          }
+          let dayIndex = 0, best = Infinity;
+          rowCandidates.forEach((cy,idx)=>{
+            const dist=Math.abs(cell.y-cy);
+            if(dist<best){best=dist;dayIndex=idx;}
+          });
+
+          let period = 1, pbest = Infinity;
+          uniquePeriods.forEach(q=>{
+            const dist=Math.abs(cell.cx-q.cx);
+            if(dist<pbest){pbest=dist;period=q.p;}
+          });
+
+          const className = normalizeClass(cell.str);
+
+          const subjectItems = its.filter(it =>
+            it.x >= left-2 && it.x <= right+2 &&
+            Math.abs(it.y - (cell.y-9.7)) <= 3.8 &&
+            !classRe.test(normalizeClass(it.str)) &&
+            !/^(الأحد|الاثنين|الثلاثاء|الأربعاء|الخميس|الفسحة|حد|ثنين|ثاء|ربعاء|ا)$/.test(it.str)
+          );
+
+          const sortedCenters = uniquePeriods.slice().sort((a,b)=>a.cx-b.cx);
+          const pos = Math.max(0, sortedCenters.findIndex(q=>q.p===period));
+          const thisCenter = sortedCenters[pos]?.cx ?? cell.cx;
+          const leftBound = pos===0
+            ? thisCenter - 18
+            : (sortedCenters[pos-1].cx + thisCenter)/2;
+          const rightBound = pos===sortedCenters.length-1
+            ? thisCenter + 18
+            : (thisCenter + sortedCenters[pos+1].cx)/2;
+
+          const subject = fixSubject(
+            subjectItems
+              .filter(it=>it.cx>=Math.min(leftBound,rightBound)-3 && it.cx<=Math.max(leftBound,rightBound)+3)
+              .sort((a,b)=>a.x-b.x)
+              .map(it=>it.str)
+              .join(' ')
+          );
+
+          out.push({
+            teacher,
+            day: DAYS[dayIndex],
+            period,
+            sub: subject || 'اسم المادة',
+            cl: className,
+            page: pageNo
+          });
+        });
+      }
+    });
+
+    return out;
+  },
+
+  readSchoolFile(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+    const status = $('importStatus');
+    status.innerHTML = '<div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 font-medium text-slate-600">جاري قراءة ملف Excel وتحليل البيانات...</div>';
+    const r = new FileReader();
+    r.onload = e => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        
+        let allParsedRows = [];
+
+        // أولاً: حاول التعرف على تصدير aSc الكامل (شيت "الحصص" + أوراق المواد المنتهية بنقطة)
+        // ويُنتج فقط: المعلم + اليوم + الحصة (1-8) + المادة، ويتجاهل الفصول/الغرف/باقي الأوراق.
+        const ascRows = this.parseAscTeacherWorkbook(wb);
+        if (ascRows && ascRows.length) {
+          allParsedRows = ascRows;
+        }
+
+        if (!allParsedRows.length) {
+          wb.SheetNames.forEach(sheetName => {
+            const ws = wb.Sheets[sheetName];
+            const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+            const sheetParsed = this.parseExcelMatrixOrTable(rawRows);
+            if (sheetParsed && sheetParsed.length > 0) {
+              allParsedRows.push(...sheetParsed);
+            }
+          });
+        }
+
+        if (!allParsedRows.length) {
+          const firstSheet = wb.Sheets[wb.SheetNames[0]];
+          const jsonRows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+          allParsedRows = this.parseSchoolRows(jsonRows);
+        }
+
+        if (!allParsedRows.length) {
+          throw Error('تعذر التعرف على هيكل جدول المعلمين في ملف Excel. تأكد من وجود اسم المعلم، الأيام، الحصص والمواد والفصول.');
+        }
+
+        window.pendingSchoolRows = allParsedRows;
+        status.innerHTML = `
+          <div class="border border-emerald-200 bg-emerald-50/80 rounded-2xl p-5">
+            <b class="text-emerald-900 text-lg block mb-1">✨ تمت قراءة ${allParsedRows.length} حصة من ملف Excel بنجاح!</b>
+            <div class="text-sm text-emerald-800 mb-4">عدد المعلمين المكتشفين: <span class="font-bold">${[...new Set(allParsedRows.map(x => x.teacher))].length}</span></div>
+            <div class="flex gap-3">
+              <button onclick="App.confirmSchoolImport()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-md transition-all">اعتماد وحفظ الجدول</button>
+              <button onclick="App.cancelSchoolImport()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-5 py-2.5 rounded-xl font-semibold transition-all">إلغاء</button>
+            </div>
+          </div>
+        `;
+        this.renderImportPreview(allParsedRows.slice(0, 40));
+      } catch (err) {
+        console.error(err);
+        status.innerHTML = `<div class="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 font-medium">❌ تعذر قراءة ملف Excel: ${esc(err.message)}</div>`;
+      }
+    };
+    r.readAsArrayBuffer(file);
+  },
+
+  // تصدير aSc الكامل: يحتوي على شيت "الحصص" (المعلم/الشعبة/المادة) + شيت لكل مادة
+  // (اسم الشيت = اسم المادة + نقطة) يسرد لكل يوم/حصة الشعب التي تُدرَّس فيها هذه المادة.
+  // بما أن كل (شعبة + مادة) مرتبطة بمعلم واحد فقط، نبني: (شعبة+مادة) -> معلم من "الحصص"،
+  // ثم نمر على كل شيتات المواد لتحديد يوم/حصة كل معلم، ونتجاهل كل شيء آخر (الغرف، الفصول،
+  // شيتات "المعلمون المتاحون"، إلخ) كما طلب المستخدم.
+  parseAscTeacherWorkbook(wb) {
+    if (!wb.SheetNames.includes('الحصص')) return null;
+    const subjectSheetNames = wb.SheetNames.filter(n => n.trim().endsWith('.'));
+    if (!subjectSheetNames.length) return null;
+
+    const hososRows = XLSX.utils.sheet_to_json(wb.Sheets['الحصص'], { header: 1, defval: '' });
+    const classSubjTeacher = {};
+    const subjectsFromHosos = new Set();
+    hososRows.forEach((row, idx) => {
+      if (idx === 0) return; // رأس الجدول: المعلم / الشعب / المجموعة / المادة ...
+      // خلية المعلم قد تحوي أكثر من معلم مفصولين بفاصلة (تدريس مشترك، مثل التوجيه المهني) -
+      // نفصلهم إلى معلمين حقيقيين مستقلين بدل معاملتهم كاسم واحد مركّب/جدول مشترك.
+      const teacherNames = this.normalize(row[0])
+        .split(/[,،]/)
+        .map(n => n.trim())
+        .filter(Boolean);
+      const cls = this.normalize(row[1]).replace(/\s+/g, '');
+      const subj = this.normalize(row[3]);
+      if (!teacherNames.length || !cls || !subj) return;
+      const key = cls + '|' + subj;
+      (classSubjTeacher[key] ||= []);
+      teacherNames.forEach(teacher => {
+        // نفس المعلم قد يتكرر بمدد مختلفة (مفردة/مزدوجة) لنفس الشعبة والمادة - لا نكرره
+        if (!classSubjTeacher[key].includes(teacher)) classSubjTeacher[key].push(teacher);
+      });
+      subjectsFromHosos.add(subj);
+    });
+    if (!Object.keys(classSubjTeacher).length) return null;
+
+    // اربط كل اسم مادة بشيتها (مع معالجة أسماء الشيتات المبتورة بسبب حد إكسل 31 حرفًا)
+    const sheetForSubject = {};
+    subjectsFromHosos.forEach(subj => {
+      const exact = subj + '.';
+      if (subjectSheetNames.includes(exact)) { sheetForSubject[subj] = exact; return; }
+      for (const sn of subjectSheetNames) {
+        const stripped = sn.replace(/\.$/, '').replace(/\d+$/, '');
+        if (stripped.length > 3 && subj.startsWith(stripped)) { sheetForSubject[subj] = sn; return; }
+      }
+    });
+
+    const out = [];
+    Object.entries(sheetForSubject).forEach(([subject, sheetName]) => {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: '' });
+      rows.forEach(row => {
+        let dayIdx = -1, day = '';
+        for (let i = 0; i < row.length; i++) {
+          const d = this.normalizeDay(row[i]);
+          if (d) { dayIdx = i; day = d; break; }
+        }
+        if (dayIdx === -1) return;
+        const period = this.normalizePeriod(row[dayIdx + 1]);
+        if (!period || period < 1 || period > 8) return;
+        for (let i = dayIdx + 2; i < row.length; i++) {
+          const cls = this.normalize(row[i]).replace(/\s+/g, '');
+          if (!cls) continue;
+          // قد تكون الحصة مشتركة بين أكثر من معلم لنفس الشعبة/المادة (تدريس مشترك) -
+          // ننزل الحصة لكل معلم منهم بدلًا من الاحتفاظ بمعلم واحد فقط.
+          const teacherList = classSubjTeacher[cls + '|' + subject];
+          if (teacherList) teacherList.forEach(teacher => out.push({ teacher, day, period, sub: subject, cl: '' }));
+        }
+      });
+    });
+
+    return out.length ? out : null;
+  },
+
+  parseExcelMatrixOrTable(matrix) {
+    if (!matrix || matrix.length === 0) return [];
+    const out = [];
+    let currentTeacher = '';
+    let dayMapping = {};
+    let periodCols = {};
+
+    for (let r = 0; r < matrix.length; r++) {
+      const row = matrix[r];
+      if (!row || row.length === 0) continue;
+      const rowStr = row.map(c => String(c ?? '').trim()).join(' ');
+      if (!rowStr) continue;
+
+      for (let c = 0; c < row.length; c++) {
+        const val = String(row[c] || '').trim();
+        if (!val) continue;
+        
+        if (val.length >= 3 && !/^(الحصة|اليوم|الأحد|الاثنين|الثلاثاء|الأربعاء|الخميس|1|2|3|4|5|6|7|8|\d+\/\d+)/i.test(val)) {
+          if (!['المعلم', 'المادة', 'الفصل', 'اليوم', 'الحصة'].includes(val)) {
+            currentTeacher = val;
+          }
+        }
+
+        const normalizedVal = val.toLowerCase();
+        for (const d of DAYS) {
+          if (normalizedVal.includes(d.toLowerCase())) {
+            dayMapping[r] = d;
+          }
+        }
+
+        if (/^[1-8]$/.test(val)) {
+          periodCols[+val] = c;
+        }
+      }
+
+      for (let c = 0; c < row.length; c++) {
+        const cellVal = String(row[c] || '').trim();
+        if (!cellVal) continue;
+
+        const classMatch = cellVal.match(/^(\d{1,2}\s*\/\s*\d{1,2})$/);
+        if (classMatch && currentTeacher) {
+          let period = 1;
+          for (const [pNum, pCol] of Object.entries(periodCols)) {
+            if (Math.abs(pCol - c) <= 2) {
+              period = +pNum;
+              break;
+            }
+          }
+          let day = 'الأحد';
+          for (let prevR = r; prevR >= Math.max(0, r - 6); prevR--) {
+            if (dayMapping[prevR]) {
+              day = dayMapping[prevR];
+              break;
+            }
+          }
+          let sub = 'اسم المادة';
+          if (c > 0 && String(row[c-1]).trim() && !/^\d+$/.test(String(row[c-1]))) {
+            sub = String(row[c-1]).trim();
+          }
+
+          out.push({
+            teacher: currentTeacher,
+            day: day,
+            period: period,
+            sub: sub,
+            cl: classMatch[1].replace(/\s+/g, '')
+          });
+        }
+      }
+    }
+
+    if (out.length === 0) {
+      for (let r = 0; r < matrix.length; r++) {
+        const row = matrix[r];
+        if (row.length >= 4) {
+          let tName = '', dName = '', pNum = 1, sName = 'اسم المادة', cName = '';
+          row.forEach(cell => {
+            const val = String(cell || '').trim();
+            if (!tName && val.length > 3 && /[\u0600-\u06FF]/.test(val) && !DAYS.some(d => val.includes(d))) {
+              tName = val;
+            } else if (!dName) {
+              for (const d of DAYS) if (val.includes(d)) dName = d;
+            } else if (!pNum && /^[1-8]$/.test(val)) {
+              pNum = +val;
+            } else if (/^\d{1,2}\s*\/\s*\d{1,2}$/.test(val)) {
+              cName = val;
+            }
+          });
+          if (tName && dName && cName) {
+            out.push({ teacher: tName, day: dName, period: pNum || 1, sub: sName, cl: cName });
+          }
+        }
+      }
+    }
+
+    return out;
+  },
+
+  cancelSchoolImport() {
+    window.pendingSchoolRows = null;
+    $('importStatus').innerHTML = '';
+    this.renderSchoolPreview();
+  },
+
+  parseSchoolRows(rows) {
+    if (!rows.length) throw Error('الملف لا يحتوي على بيانات.');
+    const hs = Object.keys(rows[0]).map(this.normalize);
+    const ti = this.findHeader(hs, ['المعلم', 'اسم المعلم', 'teacher', 'name']),
+          di = this.findHeader(hs, ['اليوم', 'day']),
+          pi = this.findHeader(hs, ['الحصة', 'رقم الحصة', 'period', 'lesson']),
+          si = this.findHeader(hs, ['المادة', 'subject']),
+          ci = this.findHeader(hs, ['الفصل', 'الصف', 'الشعبة', 'class', 'grade']);
+
+    if (ti >= 0 && di >= 0 && pi >= 0) {
+      return rows.map(r => {
+        const v = Object.values(r);
+        return { teacher: this.normalize(v[ti]), day: this.normalizeDay(v[di]), period: this.normalizePeriod(v[pi]), sub: si >= 0 ? this.normalize(v[si]) : 'اسم المادة', cl: ci >= 0 ? this.normalize(v[ci]) : '' };
+      }).filter(x => x.teacher && x.day && x.period);
+    }
+    const tcol = ti >= 0 ? ti : 0, out = [];
+    rows.forEach(r => {
+      const v = Object.values(r), teacher = this.normalize(v[tcol]);
+      if (!teacher) return;
+      hs.forEach((h, i) => {
+        if (i === tcol) return;
+        const d = this.normalizeDay(h), p = this.normalizePeriod(h), raw = this.normalize(v[i]);
+        if (d && p && raw) {
+          let sub = raw, cl = '';
+          const z = raw.split(/\s*[-|/]\s*/);
+          if (z.length > 1) { sub = z[0]; cl = z.slice(1).join(' - '); }
+          out.push({ teacher, day: d, period: p, sub: sub || 'اسم المادة', cl });
+        }
+      });
+    });
+    return out;
+  },
+
+  normalize(v) { return String(v ?? '').replace(/\s+/g, ' ').trim(); },
+  normalizeDay(v) {
+    const s = this.normalize(v), m = { 'الأحد': 'الأحد', 'الاحد': 'الأحد', 'Sunday': 'الأحد', 'الاثنين': 'الاثنين', 'الإثنين': 'الاثنين', 'Monday': 'الاثنين', 'الثلاثاء': 'الثلاثاء', 'Tuesday': 'الثلاثاء', 'الأربعاء': 'الأربعاء', 'الاربعاء': 'الأربعاء', 'Wednesday': 'الأربعاء', 'الخميس': 'الخميس', 'Thursday': 'الخميس' };
+    if (m[s]) return m[s];
+    for (const d of DAYS) if (s.includes(d)) return d;
+    return '';
+  },
+  normalizePeriod(v) { const m = this.normalize(v).match(/[1-8]/); return m ? +m[0] : null; },
+  findHeader(hs, words) { return hs.findIndex(h => words.some(w => this.normalize(h).toLowerCase().includes(w))); },
+
+  confirmSchoolImport() {
+    if (!window.pendingSchoolRows?.length) return;
+    this.importParsedRows(window.pendingSchoolRows);
+    window.pendingSchoolRows = null;
+    $('importStatus').innerHTML = '<div class="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-semibold">✨ تم اعتماد الجدول العام وحفظه محليًا بنجاح!</div>';
+    this.renderSchoolPreview();
+  },
+
+  importParsedRows(rows) {
+    db.s = {};
+
+    const map = {};
+    db.teachers.forEach(t => map[this.normalize(t.name)] = t);
+
+    const sharedMap = {};
+    rows.forEach(x => {
+      const k = `${x.day}|${x.period}|${this.normalize(x.cl)}`;
+      if (x.cl) {
+        if (!sharedMap[k]) sharedMap[k] = new Set();
+        sharedMap[k].add(x.teacher);
+      }
+    });
+
+    rows.forEach(x => {
+      let t = map[this.normalize(x.teacher)];
+      if (!t) {
+        t = { id: Date.now() + Math.random(), name: x.teacher, active: true, quota: 3 };
+        db.teachers.push(t);
+        db.cnt[t.id] = 0;
+        map[this.normalize(x.teacher)] = t;
+      }
+
+      const sharedKey = `${x.day}|${x.period}|${this.normalize(x.cl)}`;
+      const sharedTeachers = x.cl ? [...(sharedMap[sharedKey] || [])].filter(n => n !== x.teacher) : [];
+
+      db.s[key(t.id, x.day, x.period)] = {
+        sub: x.sub || 'اسم المادة',
+        cl: x.cl || '',
+        shared: sharedTeachers.length > 0,
+        sharedWith: sharedTeachers
+      };
+    });
+
+    db.schoolScheduleMeta = {
+      importedAt: new Date().toLocaleString('ar-OM'),
+      rows: rows.length,
+      teachers: [...new Set(rows.map(x => x.teacher))].length,
+      sharedLessons: Object.values(sharedMap).filter(set => set.size > 1).length
+    };
+
+    save();
+  },
+
+
+  renderImportPreview(rows) {
+    const box = $('schoolSchedulePreview');
+    if (!box) return;
+    box.innerHTML = `
+      <div class="overflow-x-auto rounded-2xl border border-slate-200">
+        <table class="w-full border-collapse text-sm text-right">
+          <thead>
+            <tr class="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+              <th class="p-3">المعلم</th>
+              <th class="p-3">اليوم</th>
+              <th class="p-3 text-center">الحصة</th>
+              <th class="p-3">المادة</th>
+              <th class="p-3">الفصل</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            ${rows.map(x => `
+              <tr class="hover:bg-slate-50/50">
+                <td class="p-3 font-semibold text-slate-800">${esc(x.teacher)}</td>
+                <td class="p-3 text-slate-600">${esc(x.day)}</td>
+                <td class="p-3 text-center font-bold text-slate-700">${x.period}</td>
+                <td class="p-3 text-slate-700">${esc(x.sub)}</td>
+                <td class="p-3 text-slate-600">${esc(x.cl)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      ${rows.length >= 40 ? '<p class="text-xs text-slate-400 mt-3 font-medium">تم عرض أول 40 صفاً فقط للمعاينة السريعة.</p>' : ''}
+    `;
+  },
+
+  renderSchoolPreview() {
+    const box = $('schoolSchedulePreview');
+    if (!box) return;
+    const rows = [];
+    db.teachers.forEach(t => DAYS.forEach(d => PERIODS.forEach(p => {
+      const l = lesson(t.id, d, p);
+      if (l.sub || l.cl) rows.push({ teacher: t.name, day: d, period: p, sub: l.sub, cl: l.cl });
+    })));
+    let headerInfo = '';
+    if (db.schoolScheduleMeta) {
+      headerInfo = `<div class="mb-4 text-sm font-semibold text-slate-600 bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-wrap gap-4 items-center justify-between">
+        <span>📅 آخر استيراد: <b class="text-slate-900">${esc(db.schoolScheduleMeta.importedAt)}</b></span>
+        <span>👨‍🏫 عدد المعلمين: <b class="text-emerald-600">${db.schoolScheduleMeta.teachers}</b></span>
+        <span>📊 إجمالي الحصص: <b class="text-slate-900">${db.schoolScheduleMeta.rows}</b></span>
+      </div>`;
+    } else {
+      headerInfo = '<div class="mb-4 text-sm text-slate-400 font-medium">لم يتم رفع جدول عام بعد. يمكنك رفع ملف الجدول (Excel أو PDF أو XML) للبدء.</div>';
+    }
+    box.innerHTML = headerInfo + (rows.length ? `<div class="mt-4"><h4 class="font-bold text-slate-800 mb-3 text-sm">عينة من بيانات الجدول العام:</h4></div>` : '');
+    if (rows.length) {
+      const grouped = {};
+      rows.forEach(r => {
+        if (!grouped[r.teacher]) grouped[r.teacher] = 0;
+        grouped[r.teacher]++;
+      });
+      const teacherSummary = Object.entries(grouped).slice(0, 30).map(([name,count]) =>
+        `<span class="px-3 py-1.5 rounded-full bg-white border border-slate-200 text-xs font-semibold">${esc(name)}: ${count} فعلي</span>`
+      ).join('');
+      box.innerHTML += `<div class="mt-5 flex flex-wrap gap-2">${teacherSummary}</div>`;
+    }
+  },
+
+  openFreeManager() {
+    this.openM('تفريغ معلم يدويًا', `
+      <div class="space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">اليوم</label>
+            <select id="fd" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">${DAYS.map(d => `<option>${d}</option>`).join('')}</select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">الحصة</label>
+            <select id="fp" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">${PERIODS.map(p => `<option value="${p}">الحصة ${p}</option>`).join('')}</select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">المعلم</label>
+            <select id="ft" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">${db.teachers.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div class="flex gap-3 pt-2">
+          <button onclick="App.applyManualFree(true)" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white p-3.5 rounded-xl font-semibold shadow-md shadow-amber-500/10 transition-all">تفريغ المعلم</button>
+          <button onclick="App.applyManualFree(false)" class="flex-1 border border-slate-200 hover:bg-slate-50 text-slate-700 p-3.5 rounded-xl font-semibold transition-all">إلغاء التفريغ</button>
+        </div>
+      </div>
+    `);
+  },
+
+  applyManualFree(v) {
+    const d = $('fd').value, p = +$('fp').value, id = +$('ft').value;
+    if (v) db.free[freeKey(id, d, p)] = true; else delete db.free[freeKey(id, d, p)];
+    save();
+    this.closeM();
+    this.schedule();
+  },
+
+  openSubjectFreeManager() {
+    const subjects = [...new Set(Object.values(db.s).map(x => x.sub).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'));
+    this.openM('تفريغ المعلمين حسب المادة', `
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">اليوم</label>
+          <select id="sd" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">${DAYS.map(d => `<option>${d}</option>`).join('')}</select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">الحصة</label>
+          <select id="sp" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">${PERIODS.map(p => `<option value="${p}">الحصة ${p}</option>`).join('')}</select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">المادة</label>
+          <select id="ss" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">${subjects.map(s => `<option>${esc(s)}</option>`).join('')}</select>
+        </div>
+        <div class="flex gap-3 pt-2">
+          <button onclick="App.applySubjectFree(true)" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white p-3.5 rounded-xl font-semibold shadow-md shadow-indigo-600/10 transition-all">تفريغ معلمي هذه المادة</button>
+          <button onclick="App.applySubjectFree(false)" class="flex-1 border border-slate-200 hover:bg-slate-50 text-slate-700 p-3.5 rounded-xl font-semibold transition-all">إلغاء التفريغ</button>
+        </div>
+      </div>
+    `);
+  },
+
+  applySubjectFree(v) {
+    const d = $('sd').value, p = +$('sp').value, s = $('ss').value;
+    db.teachers.forEach(t => {
+      if (lesson(t.id, d, p).sub === s) {
+        if (v) db.free[freeKey(t.id, d, p)] = true; else delete db.free[freeKey(t.id, d, p)];
+      }
+    });
+    save();
+    this.closeM();
+    this.schedule();
+  },
+
+  clearAllFree() {
+    this.confirm('هل تريد فعلاً إلغاء كافة حالات التفريغ المسجلة؟', () => {
+      db.free = {};
+      save();
+      this.schedule();
+    }, 'إلغاء التفريغات');
+  },
+
+  absence() {
+    db.teachers = Array.isArray(db.teachers) ? db.teachers : [];
+    db.cnt = db.cnt && typeof db.cnt === 'object' ? db.cnt : {};
+    db.free = db.free && typeof db.free === 'object' ? db.free : {};
+    const today = new Date().toISOString().slice(0, 10);
+    const defaultDay = 'الأحد';
+
+    $('app').innerHTML = `
+      <section class="bg-white rounded-3xl p-6 md:p-8 card-shadow border border-slate-100 max-w-7xl mx-auto mb-6">
+        <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
+          <div>
+            <h3 class="font-bold text-2xl text-slate-900">تسجيل غياب متعدد المعلمين</h3>
+            <p class="text-sm text-slate-500 mt-1">اختر عدة معلمين، ستظهر حصصهم أولًا، ثم اضغط «التوزيع الآلي» لتوزيعها حسب الشروط والعدالة.</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="App.clearAbsentSelection()" class="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700">إلغاء التحديد</button>
+            <button onclick="App.buildAbsenceDraft()" class="px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50">↻ تحديث الحصص</button>
+            <button onclick="App.runSmartDistributionPreview()" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold">⚖️ التوزيع الآلي</button>
+            <button onclick="App.resetAbsenceDraft()" class="px-4 py-2.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-200">إعادة التوزيع</button>
+            <button onclick="App.commitMultiAssignments()" class="px-5 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold">✓ اعتماد التوزيع</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-5">
+          <div class="lg:col-span-1">
+            <div class="grid grid-cols-1 gap-3 mb-4">
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">التاريخ</label>
+                <input id="date" type="date" value="${today}" onchange="App.buildAbsenceDraft()" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">اليوم الدراسي</label>
+                <select id="day" onchange="App.buildAbsenceDraft()" class="w-full border border-slate-200 rounded-xl p-3 bg-white font-bold outline-none focus:border-emerald-500">
+                  ${DAYS.map(d => `<option value="${d}" ${d === defaultDay ? 'selected' : ''}>${d}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between mb-2">
+              <label class="block text-xs font-bold text-slate-600">المعلمون الغائبون</label>
+              <span id="absCount" class="text-xs text-emerald-700 font-bold">0 محدد</span>
+            </div>
+            <input id="absSearch" oninput="App.filterAbsentList()" placeholder="🔎 ابحث عن معلم..." class="w-full border border-slate-200 rounded-xl p-3 mb-2">
+            <div id="absTeacherList" class="border border-slate-200 rounded-2xl overflow-auto max-h-[520px] divide-y">
+              ${(db.teachers||[]).map(t=>`
+                <label class="abs-teacher-row flex items-center gap-3 p-3 hover:bg-emerald-50 cursor-pointer" data-name="${esc(t.name).toLowerCase()}">
+                  <input type="checkbox" class="abs-teacher-check w-4 h-4 accent-emerald-600" value="${t.id}" onchange="App.buildAbsenceDraft()">
+                  <span class="flex-1 text-sm font-semibold">${esc(t.name)}</span>
+                  <span class="text-[11px] text-slate-400">${db.cnt[t.id]||0}/${t.quota||3}</span>
+                </label>`).join('')}
+            </div>
+          </div>
+
+          <div class="lg:col-span-3">
+            <div id="absenceSummary" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4"></div>
+            <div id="less" class="space-y-3"></div>
+            <div id="reviewContainer" class="mt-4"></div>
+          </div>
+        </div>
+      </section>`;
+    window.currentPreviewItems = [];
+    this.buildAbsenceDraft();
+  },
+
+  filterAbsentList() {
+    const q = ($('absSearch')?.value || '').trim().toLowerCase();
+    document.querySelectorAll('.abs-teacher-row').forEach(row => {
+      row.style.display = row.dataset.name.includes(q) ? '' : 'none';
+    });
+  },
+
+  clearAbsentSelection() {
+    document.querySelectorAll('.abs-teacher-check').forEach(x => x.checked = false);
+    window.currentPreviewItems = [];
+    this.buildAbsenceDraft();
+  },
+
+  getSelectedAbsentIds() {
+    return [...document.querySelectorAll('.abs-teacher-check:checked')].map(x => +x.value);
+  },
+
+  buildAbsenceDraft() {
+    const date = $('date')?.value || new Date().toISOString().slice(0,10);
+    const day = $('day')?.value || 'الأحد';
+
+    const ids = this.getSelectedAbsentIds();
+    const old = window.currentPreviewItems || [];
+    const rows = [];
+
+    ids.forEach(absid => {
+      const teacher = db.teachers.find(t => t.id == absid);
+      if (!teacher) return;
+      PERIODS.forEach(p => {
+        const l = lesson(absid, day, p);
+        if (l.sub || l.cl) {
+          const oldRow = old.find(x => x.absentId == absid && x.period == p && x.day == day);
+          rows.push({
+            absentId: absid,
+            absentName: teacher.name,
+            day,
+            date,
+            period: p,
+            subject: l.sub || 'اسم المادة',
+            className: l.cl || '',
+            selectedTeacherId: oldRow?.selectedTeacherId || null,
+            scoredList: [],
+            status: oldRow?.selectedTeacherId ? 'تم التوزيع' : 'غير موزعة'
+          });
+        }
+      });
+    });
+
+    window.currentPreviewItems = rows;
+
+    if ($('absCount')) $('absCount').textContent = `${ids.length} محدد`;
+    this.renderAbsenceDraft();
+  },
+
+  renderAbsenceDraft() {
+    const rows = window.currentPreviewItems || [];
+    const less = $('less');
+    const review = $('reviewContainer');
+    if (!less) return;
+
+    const assigned = rows.filter(x => x.selectedTeacherId).length;
+    const unassigned = rows.length - assigned;
+    const absentCount = new Set(rows.map(x => x.absentId)).size;
+
+    $('absenceSummary').innerHTML = `
+      <div class="rounded-2xl bg-slate-50 border p-3"><div class="text-xs text-slate-500">المعلمون الغائبون</div><b class="text-xl">${absentCount}</b></div>
+      <div class="rounded-2xl bg-slate-50 border p-3"><div class="text-xs text-slate-500">إجمالي الحصص</div><b class="text-xl">${rows.length}</b></div>
+      <div class="rounded-2xl bg-emerald-50 border border-emerald-100 p-3"><div class="text-xs text-emerald-700">موزعة</div><b class="text-xl text-emerald-700">${assigned}</b></div>
+      <div class="rounded-2xl bg-amber-50 border border-amber-100 p-3"><div class="text-xs text-amber-700">غير موزعة</div><b class="text-xl text-amber-700">${unassigned}</b></div>`;
+
+    if (!rows.length) {
+      less.innerHTML = `<div class="border border-dashed rounded-2xl p-10 text-center text-slate-400">اختر معلمًا أو عدة معلمين من القائمة لعرض حصصهم في يوم (${$('day')?.value || 'الأحد'}).</div>`;
+      if (review) review.innerHTML = '';
       return;
     }
 
-    result.innerHTML = `
-      <div class="student-info">
-        <p><b>👤 اسم الطالب:</b> ${d.name}</p>
-        <p><b>🏫 الصف:</b> ${d.grade}</p>
-      </div>
+    const groups = {};
+    rows.forEach(r => { const k = `${r.day}|${r.period}`; (groups[k] ||= []).push(r); });
 
-      ${subject("التربية الإسلامية", d.islamic)}
-      ${subject("اللغة العربية", d.arabic)}
-      ${subject("الرياضيات", d.math)}
-      ${subject("العلوم", d.science)}
-      ${subject("الدراسات الاجتماعية", d.social)}
-      ${subject("المهارات الحياتية", d.life)}
-      ${subject("تقنية المعلومات", d.it)}
-      ${subject("الرياضة المدرسية", d.sport)}
-      ${subject("الفنون التشكيلية", d.art)}
-      ${subject("المهارات الموسيقية", d.music)}
+    less.innerHTML = Object.values(groups)
+      .sort((a,b)=>a[0].period-b[0].period)
+      .map(group => `
+        <div class="border border-slate-200 rounded-2xl overflow-hidden mb-4">
+          <div class="px-4 py-3 bg-slate-50 flex flex-wrap justify-between items-center gap-2">
+            <b>الحصة ${group[0].period} — ${esc(group[0].day)}</b>
+            <span class="text-xs ${group.length>1?'text-amber-700 bg-amber-50':'text-slate-500 bg-white'} px-2.5 py-1 rounded-lg border">
+              ${group.length>1 ? `⚠️ ${group.length} حصص غياب متزامنة` : 'حصة غياب'}
+            </span>
+          </div>
+          <div class="overflow-auto p-4 space-y-4">
+            ${group.map((r,idx)=> {
+              const rowIndex = rows.indexOf(r);
+              const selectedT = db.teachers.find(t => t.id == r.selectedTeacherId);
+              
+              const candidates = this.getAbsenceCandidates(r, new Set(
+                rows.filter((x,i)=>i!==rowIndex && x.day===r.day && x.period===r.period && x.selectedTeacherId).map(x=>x.selectedTeacherId)
+              )).map(t => this.scoreAbsenceCandidate(t, r, rows))
+              .sort((a,b) => {
+                if (a.pct !== b.pct) return a.pct - b.pct;
+                if (a.assigned !== b.assigned) return a.assigned - b.assigned;
+                return String(a.teacher.name).localeCompare(String(b.teacher.name),'ar');
+              });
+
+              r.scoredList = candidates;
+
+              return `
+                <div class="bg-slate-50/70 border border-slate-200 rounded-2xl p-4">
+                  <div class="flex flex-wrap justify-between items-center gap-3 mb-3">
+                    <div>
+                      <span class="text-xs text-slate-400 block">المعلم الغائب</span>
+                      <strong class="text-slate-900 text-base">${esc(r.absentName)}</strong>
+                      <span class="text-xs text-slate-500 mr-2">(${esc(r.subject)} - ${esc(r.className)})</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <label class="text-xs font-bold text-slate-700">المعلم البديل:</label>
+                      <select onchange="App.updateAbsencePick(${rowIndex}, this.value)" class="border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white font-bold text-indigo-700 outline-none focus:border-emerald-500">
+                        <option value="">-- اختر بديل يدويًا --</option>
+                        ${candidates.map(sc => {
+                          const pct = sc.quota > 0 ? Math.min(100, Math.round((sc.assigned / sc.quota) * 100)) : 0;
+                          return `
+                            <option value="${sc.teacher.id}" ${sc.teacher.id == r.selectedTeacherId ? 'selected' : ''}>
+                              ${esc(sc.teacher.name)} (${sc.assigned}/${sc.quota} - ${pct}%)
+                            </option>
+                          `;
+                        }).join('')}
+                      </select>
+                    </div>
+                  </div>
+
+                  ${selectedT ? `
+                    <div class="mb-1 p-3 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-between text-xs">
+                      <div>
+                        <span>البديل الحالي: </span>
+                        <strong class="text-emerald-900">${esc(selectedT.name)}</strong>
+                        <span class="bg-white px-2 py-0.5 rounded-full border border-emerald-200 font-bold text-emerald-700 mr-2">${db.cnt[selectedT.id]||0}/${selectedT.quota||3} (${selectedT.quota > 0 ? Math.min(100, Math.round(((db.cnt[selectedT.id]||0)/selectedT.quota)*100)) : 0}%)</span>
+                      </div>
+                      <span class="text-emerald-700 font-bold">✓ تم الإسناد</span>
+                    </div>
+                  ` : `
+                    <div class="mb-1 p-3 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-800 font-medium">
+                      بانتظار التوزيع الآلي أو الاختيار اليدوي من القائمة أعلاه
+                    </div>
+                  `}
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>`).join('');
+
+    if (review) review.innerHTML = '';
+  },
+
+  getAbsenceCandidates(row, usedAtPeriod = new Set()) {
+    const absentIds = new Set((window.currentPreviewItems||[]).map(x=>x.absentId));
+    return (db.teachers||[])
+      .filter(t => t.active)
+      .filter(t => !absentIds.has(+t.id))
+      .filter(t => !usedAtPeriod.has(+t.id))
+      .filter(t => {
+        const l = lesson(t.id, row.day, row.period);
+        return isFreed(t.id, row.day, row.period) || !(l.sub || l.cl);
+      })
+      .filter(t => {
+        const quota = Number(t.quota ?? 3);
+        return (db.cnt[t.id]||0) < quota;
+      });
+  },
+
+  scoreAbsenceCandidate(t, row, draftRows) {
+    const actual = db.cnt[t.id] || 0;
+    const quota = Number(t.quota ?? 3);
+    const draft = draftRows.filter(x => x.selectedTeacherId == t.id).length;
+    const assigned = actual + draft;
+    const deficit = Math.max(0, quota - assigned);
+    const pct = quota > 0 ? assigned / quota : Infinity;
+
+    return {
+      teacher:t,
+      assigned,
+      quota,
+      deficit,
+      draft,
+      pct
+    };
+  },
+
+  runSmartDistributionPreview() {
+    const rows = window.currentPreviewItems || [];
+    if (!rows.length) {
+      this.alert('اختر معلمًا واحدًا أو أكثر أولًا.');
+      return;
+    }
+
+    rows.forEach(r => {
+      r.selectedTeacherId = null;
+      r.scoredList = [];
+      r.status = 'غير موزعة';
+    });
+
+    const groups = {};
+    rows.forEach(r => { const k = `${r.day}|${r.period}`; (groups[k] ||= []).push(r); });
+
+    Object.values(groups).forEach(group => {
+      const used = new Set();
+
+      group.sort((a,b) =>
+        this.getAbsenceCandidates(a, used).length - this.getAbsenceCandidates(b, used).length
+      );
+
+      group.forEach(row => {
+        const candidates = this.getAbsenceCandidates(row, used)
+          .map(t => this.scoreAbsenceCandidate(t,row,rows))
+          .sort((a,b) => {
+            if (a.pct !== b.pct) return a.pct - b.pct;
+            if (a.assigned !== b.assigned) return a.assigned - b.assigned;
+            return String(a.teacher.name).localeCompare(String(b.teacher.name),'ar');
+          });
+
+        row.scoredList = candidates;
+        if (candidates.length) {
+          row.selectedTeacherId = candidates[0].teacher.id;
+          row.status = 'تم التوزيع';
+          used.add(candidates[0].teacher.id);
+        } else {
+          row.status = 'غير موزعة';
+        }
+      });
+    });
+
+    this.renderAbsenceDraft();
+    $('reviewContainer').innerHTML = `
+      <div class="mt-4 p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-sm">
+        <b>تم تنفيذ التوزيع الآلي.</b>
+        يمكنك مراجعة وتعديل أي بديل يدويًا من القائمة المنسدلة لكل حصة، مع ظهور النسبة المئوية لإشغال الاحتياط لكل معلم.
+      </div>`;
+  },
+
+  updateAbsencePick(index, teacherId) {
+    const rows = window.currentPreviewItems || [];
+    if (!rows[index]) return;
+
+    const row = rows[index];
+    if (!teacherId) {
+      row.selectedTeacherId = null;
+      row.status = 'غير موزعة';
+      this.renderAbsenceDraft();
+      return;
+    }
+
+    const tid = +teacherId;
+    const candidate = this.getAbsenceCandidates(row, new Set(
+      rows.filter((x,i)=>i!==index && x.day===row.day && x.period===row.period && x.selectedTeacherId).map(x=>x.selectedTeacherId)
+    )).find(t=>t.id===tid);
+
+    if (!candidate) {
+      this.alert('هذا المعلم غير متاح لهذه الحصة حسب شروط التوزيع.');
+      this.renderAbsenceDraft();
+      return;
+    }
+
+    row.selectedTeacherId = tid;
+    row.status = 'تم التوزيع';
+    this.renderAbsenceDraft();
+  },
+
+  resetAbsenceDraft() {
+    const rows = window.currentPreviewItems || [];
+    rows.forEach(r=>{r.selectedTeacherId=null;r.scoredList=[];r.status='غير موزعة';});
+    this.renderAbsenceDraft();
+    if ($('reviewContainer')) $('reviewContainer').innerHTML = '';
+  },
+
+  commitMultiAssignments() {
+    const rows = window.currentPreviewItems || [];
+    const assigned = rows.filter(r=>r.selectedTeacherId);
+
+    if (!rows.length) {
+      this.alert('لا توجد حصص غياب.');
+      return;
+    }
+    if (!assigned.length) {
+      this.alert('اضغط «التوزيع الآلي» أولًا أو حدد المعلمين البدلاء.');
+      return;
+    }
+
+    const unassigned = rows.length - assigned.length;
+    const message = unassigned
+      ? `سيتم اعتماد ${assigned.length} حصة، وستبقى ${unassigned} حصة غير موزعة. هل تريد المتابعة؟`
+      : `سيتم اعتماد جميع الحصص (${assigned.length}) وزيادة عدادات الاحتياط. هل تريد المتابعة؟`;
+
+    if (!confirm(message)) return;
+
+    assigned.forEach(row => {
+      const substitute = db.teachers.find(t=>t.id==row.selectedTeacherId);
+      const absent = db.teachers.find(t=>t.id==row.absentId);
+      if (!substitute || !absent) return;
+
+      db.log.push({
+        date: row.date,
+        day: row.day,
+        absent: absent.name,
+        period: row.period,
+        subject: row.subject,
+        className: row.className,
+        substitute: substitute.name
+      });
+      db.cnt[substitute.id] = (db.cnt[substitute.id]||0) + 1;
+    });
+
+    save();
+    window.currentPreviewItems = [];
+    this.reportsTab = 'archive';
+    this.page('reports');
+  },
+
+  reports(tab) {
+    if (tab) this.reportsTab = tab;
+    const activeTab = this.reportsTab === 'archive' ? 'archive' : 'stats';
+    this.reportsTab = activeTab;
+
+    const tabsBar = `
+      <div class="no-print flex gap-2 mb-6">
+        <button onclick="App.reports('stats')" class="px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${activeTab==='stats' ? 'bg-emerald-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}">📊 الإحصاء والنسب</button>
+        <button onclick="App.reports('archive')" class="px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${activeTab==='archive' ? 'bg-emerald-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}">🗄️ أرشيف الغياب</button>
+      </div>`;
+
+    if (activeTab === 'archive') {
+      $('app').innerHTML = tabsBar + `
+        <section class="bg-white rounded-3xl p-6 md:p-8 card-shadow border border-slate-100 print-block">
+          <div class="report-header mb-6 text-center border-b pb-4">
+            <div class="flex items-center justify-between items-center mb-4">
+              <div class="text-right text-xs">
+                <div>${esc(db.school.ministry)}</div>
+                <div>${esc(db.school.name)}</div>
+              </div>
+              <div class="text-center">
+                ${db.school.logo ? `<img src="${esc(db.school.logo)}" class="w-14 h-14 object-contain mx-auto mb-1">` : ''}
+                <h2 class="text-lg font-black text-slate-900">أرشيف الغياب وحصص الاحتياط والتعويض</h2>
+              </div>
+              <div class="text-left text-xs text-slate-500">
+                تاريخ الطباعة: ${new Date().toLocaleDateString('ar-OM')}
+              </div>
+            </div>
+          </div>
+
+          <div class="no-print flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <h3 class="font-bold text-2xl text-slate-900">أرشيف الغياب (التوزيع الذكي واليدوي)</h3>
+            <button onclick="App.clearLog()" class="border border-rose-200 text-rose-600 hover:bg-rose-50 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all flex items-center gap-2">🗑️ مسح الأرشيف وإعادة العدادات</button>
+          </div>
+
+          <div class="overflow-x-auto rounded-2xl border border-slate-200 mb-8">
+            <table class="w-full text-sm text-right">
+              <thead>
+                <tr class="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                  <th class="p-3.5">التاريخ</th>
+                  <th class="p-3.5">اليوم</th>
+                  <th class="p-3.5">المعلم الغائب</th>
+                  <th class="p-3.5 text-center">الحصة</th>
+                  <th class="p-3.5">المادة</th>
+                  <th class="p-3.5">الفصل</th>
+                  <th class="p-3.5">المعلم البديل</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                ${db.log.map(x => `
+                  <tr class="hover:bg-slate-50/50">
+                    <td class="p-3.5 text-slate-600">${esc(x.date)}</td>
+                    <td class="p-3.5 text-slate-700 font-semibold">${esc(x.day)}</td>
+                    <td class="p-3.5 font-bold text-slate-800">${esc(x.absent)}</td>
+                    <td class="p-3.5 text-center font-bold text-emerald-600">${x.period}</td>
+                    <td class="p-3.5 text-slate-700">${esc(x.subject)}</td>
+                    <td class="p-3.5 text-slate-600">${esc(x.className)}</td>
+                    <td class="p-3.5 font-bold text-indigo-700">${esc(x.substitute)}</td>
+                  </tr>
+                `).join('') || `<tr><td colspan="7" class="p-8 text-center text-slate-400 font-medium">لا توجد سجلات في أرشيف الغياب حتى الآن.</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="mt-12 pt-8 border-t border-slate-200 grid grid-cols-2 gap-8 text-sm">
+            <div class="text-center">
+              <div class="font-bold text-slate-700 mb-12">مشرف الاحتياط العام</div>
+              <div class="text-slate-400 text-xs">التوقيع: .......................................</div>
+            </div>
+            <div class="text-center">
+              <div class="font-bold text-slate-700 mb-12">اعتماد إدارة المدرسة / المدير</div>
+              <div class="text-slate-400 text-xs">الختم والتوقيع: .......................................</div>
+            </div>
+          </div>
+        </section>
+      `;
+      return;
+    }
+
+    const statsList = db.teachers.map(t => {
+      const taken = db.cnt[t.id] || 0;
+      const quota = t.quota || 3;
+      const pct = quota > 0 ? Math.min(100, Math.round((taken / quota) * 100)) : 0;
+      return {
+        teacher: t,
+        taken,
+        quota,
+        pct,
+        subject: primarySubject(t.id)
+      };
+    }).sort((a, b) => b.pct - a.pct || a.teacher.name.localeCompare(b.teacher.name, 'ar'));
+
+    $('app').innerHTML = tabsBar + `
+      <section class="bg-white rounded-3xl p-6 md:p-8 card-shadow border border-slate-100 print-block mb-6">
+        <div class="report-header mb-6 text-center border-b pb-4">
+          <div class="flex items-center justify-between items-center mb-4">
+            <div class="text-right text-xs">
+              <div>${esc(db.school.ministry)}</div>
+              <div>${esc(db.school.name)}</div>
+            </div>
+            <div class="text-center">
+              ${db.school.logo ? `<img src="${esc(db.school.logo)}" class="w-14 h-14 object-contain mx-auto mb-1">` : ''}
+              <h2 class="text-lg font-black text-slate-900">تقرير حصص الاحتياط والنسب المئوية</h2>
+            </div>
+            <div class="text-left text-xs text-slate-500">
+              تاريخ الطباعة: ${new Date().toLocaleDateString('ar-OM')}
+            </div>
+          </div>
+        </div>
+
+        <div class="no-print flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+          <div>
+            <h3 class="font-bold text-2xl text-slate-900">تقرير إحصاء الاحتياطات والنسب المئوية</h3>
+            <p class="text-sm text-slate-500 mt-1">مرتبة تنازلياً حسب نسبة الإشغال من الحد المسموح (العدالة النسبية)، مع عرض التوقيعات الرسمية.</p>
+          </div>
+          <button onclick="window.print()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-all flex items-center gap-2">🖨️ طباعة التقرير الرسمي</button>
+        </div>
+
+        <div class="overflow-x-auto rounded-2xl border border-slate-200 mb-8">
+          <table class="w-full text-sm text-right">
+            <thead>
+              <tr class="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                <th class="p-3.5 text-center w-16">#</th>
+                <th class="p-3.5">اسم المعلم</th>
+                <th class="p-3.5">التخصص / المادة</th>
+                <th class="p-3.5 text-center">حصص الاحتياط المنفذة</th>
+                <th class="p-3.5 text-center">الحد المسموح</th>
+                <th class="p-3.5 text-center">نسبة الإشغال المئوية</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${statsList.map((st, idx) => `
+                <tr class="hover:bg-slate-50/50">
+                  <td class="p-3.5 text-center font-bold text-slate-400">${idx + 1}</td>
+                  <td class="p-3.5 font-bold text-slate-900">${esc(st.teacher.name)}</td>
+                  <td class="p-3.5 text-slate-600">${esc(st.subject)}</td>
+                  <td class="p-3.5 text-center font-black text-emerald-600 text-base">${st.taken}</td>
+                  <td class="p-3.5 text-center text-slate-600">${st.quota}</td>
+                  <td class="p-3.5 text-center">
+                    <span class="font-bold text-xs px-2.5 py-1 rounded-full ${st.pct >= 100 ? 'bg-amber-100 text-amber-800' : st.pct >= 50 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}">${st.pct}%</span>
+                  </td>
+                </tr>
+              `).join('') || `<tr><td colspan="6" class="p-8 text-center text-slate-400 font-medium">لا توجد بيانات معلمين مسجلة.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="mt-12 pt-8 border-t border-slate-200 grid grid-cols-2 gap-8 text-sm">
+          <div class="text-center">
+            <div class="font-bold text-slate-700 mb-12">مشرف الاحتياط العام</div>
+            <div class="text-slate-400 text-xs">التوقيع: .......................................</div>
+          </div>
+          <div class="text-center">
+            <div class="font-bold text-slate-700 mb-12">اعتماد إدارة المدرسة / المدير</div>
+            <div class="text-slate-400 text-xs">الختم والتوقيع: .......................................</div>
+          </div>
+        </div>
+      </section>
     `;
-  });
-}
+  },
 
-function subject(name, mark) {
-  return `
-    <div class="subject">
-      <span>${name}</span>
-      <span class="mark">${mark}</span>
-    </div>
-  `;
-}
+  clearLog() {
+    this.confirm('هل أنت متأكد من مسح أرشيف الغياب وإعادة ضبط عدادات الاحتياط لجميع المعلمين؟', () => {
+      db.log = [];
+      db.teachers.forEach(t => db.cnt[t.id] = 0);
+      save();
+      this.reports('archive');
+    }, 'مسح أرشيف الغياب');
+  },
+
+  printLog() {
+    window.print();
+  },
+
+  excel() {
+    let rows = db.log.map(x => `<Row>${[x.date, x.day, x.absent, x.period, x.subject, x.className, x.substitute].map((v, i) => `<Cell><Data ss:Type="${i == 3 ? 'Number' : 'String'}">${esc(v)}</Data></Cell>`).join('')}</Row>`).join('');
+    let xml = `<?xml version="1.0"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="سجل الاحتياط الذكي"><Table><Row>${['التاريخ', 'اليوم', 'المعلم الغائب', 'الحصة', 'المادة', 'الفصل', 'المعلم البديل'].map(x => `<Cell><Data ss:Type="String">${x}</Data></Cell>`).join('')}</Row>${rows}</Table></Worksheet></Workbook>`;
+    const blob = new Blob([xml], { type: 'application/vnd.ms-excel' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'سجل_حصص_الاحتياط_الذكي.xls';
+    a.click();
+  }
+};
+
+window.App = App;
+App.page('home');
+
 </script>
-
 </body>
 </html>
