@@ -80,9 +80,10 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
     </div>
     <div class="pt-6 border-t border-slate-800/80 mt-6 flex flex-col gap-3">
       <div class="flex items-center justify-between text-xs text-slate-400">
-        <span>💾 حفظ تلقائي محلي</span>
-        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span id="syncLabel">💾 حفظ محلي (المزامنة غير مفعلة)</span>
+        <span id="syncDot" class="w-2 h-2 rounded-full bg-slate-500 animate-pulse"></span>
       </div>
+      <button onclick="App.openSyncSettings()" class="w-full bg-white/10 hover:bg-white/15 text-white p-2.5 rounded-xl text-xs font-semibold transition-all">☁️ المزامنة الأونلاين</button>
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
         <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
         <div dir="ltr">📞 98986817</div>
@@ -126,39 +127,137 @@ const esc = x => String(x ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt
 const defaultTeachers = [];
 
 let db = JSON.parse(localStorage.getItem('schoolReserveDB') || 'null') || { teachers: defaultTeachers, s: {}, log: [], cnt: {}, free: {}, schoolScheduleMeta: null };
-db.teachers = Array.isArray(db.teachers) ? db.teachers : [];
-db.s = db.s && typeof db.s === 'object' ? db.s : {};
-db.log = Array.isArray(db.log) ? db.log : [];
-db.cnt = db.cnt && typeof db.cnt === 'object' ? db.cnt : {};
-db.free = db.free && typeof db.free === 'object' ? db.free : {};
-db.schoolScheduleMeta = db.schoolScheduleMeta || null;
-db.school = db.school && typeof db.school === 'object' ? db.school : {
-  ministry: 'وزارة التربية والتعليم',
-  name: 'مدرسة التعليم الأساسي',
-  logo: ''
-};
+function normalizeDb() {
+  db.teachers = Array.isArray(db.teachers) ? db.teachers : [];
+  db.s = db.s && typeof db.s === 'object' ? db.s : {};
+  db.log = Array.isArray(db.log) ? db.log : [];
+  db.cnt = db.cnt && typeof db.cnt === 'object' ? db.cnt : {};
+  db.free = db.free && typeof db.free === 'object' ? db.free : {};
+  db.schoolScheduleMeta = db.schoolScheduleMeta || null;
+  db.school = db.school && typeof db.school === 'object' ? db.school : {
+    ministry: 'وزارة التربية والتعليم',
+    name: 'مدرسة التعليم الأساسي',
+    logo: ''
+  };
+  if (db.school.ministry === 'وزارة التربية والتعليم') db.school.ministry = 'وزارة التعليم';
+  if (db.school.name === 'مدرسة التعليم الأساسي') db.school.name = 'معولة بن شمس للتعليم الأساسي (5-12)';
 
-// تنظيف بقايا أسماء تجريبية/افتراضية قديمة كانت محفوظة في المتصفح من إصدار سابق
-// (أسماء مفردة وهمية لا تُطابق أي معلم حقيقي من ملف الإكسل)
-const KNOWN_PLACEHOLDER_NAMES = new Set(['أحمد', 'محمد', 'خالد', 'فيصل', 'سالم', 'عبدالله', 'معلم عام']);
-{
-  const before = db.teachers.length;
-  db.teachers = db.teachers.filter(t => !KNOWN_PLACEHOLDER_NAMES.has(String(t.name || '').trim()));
-  if (db.teachers.length !== before) {
-    const keepIds = new Set(db.teachers.map(t => String(t.id)));
-    Object.keys(db.cnt).forEach(id => { if (!keepIds.has(String(id))) delete db.cnt[id]; });
-    Object.keys(db.s).forEach(k => { if (!keepIds.has(String(k.split('|')[0]))) delete db.s[k]; });
-    Object.keys(db.free).forEach(k => { if (!keepIds.has(String(k.split('|')[0]))) delete db.free[k]; });
-    localStorage.setItem('schoolReserveDB', JSON.stringify(db));
+  // تنظيف بقايا أسماء تجريبية/افتراضية قديمة كانت محفوظة في المتصفح من إصدار سابق
+  // (أسماء مفردة وهمية لا تُطابق أي معلم حقيقي من ملف الإكسل)
+  const KNOWN_PLACEHOLDER_NAMES = new Set(['أحمد', 'محمد', 'خالد', 'فيصل', 'سالم', 'عبدالله', 'معلم عام']);
+  {
+    const before = db.teachers.length;
+    db.teachers = db.teachers.filter(t => !KNOWN_PLACEHOLDER_NAMES.has(String(t.name || '').trim()));
+    if (db.teachers.length !== before) {
+      const keepIds = new Set(db.teachers.map(t => String(t.id)));
+      Object.keys(db.cnt).forEach(id => { if (!keepIds.has(String(id))) delete db.cnt[id]; });
+      Object.keys(db.s).forEach(k => { if (!keepIds.has(String(k.split('|')[0]))) delete db.s[k]; });
+      Object.keys(db.free).forEach(k => { if (!keepIds.has(String(k.split('|')[0]))) delete db.free[k]; });
+    }
   }
+
+  db.teachers.forEach(t => { if (t.quota == null) t.quota = 3; if (db.cnt[t.id] == null) db.cnt[t.id] = 0; });
+
 }
+normalizeDb();
 
-db.teachers.forEach(t => { if (t.quota == null) t.quota = 3; if (db.cnt[t.id] == null) db.cnt[t.id] = 0; });
 
-const save = () => localStorage.setItem('schoolReserveDB', JSON.stringify(db));
+// ===== الحفظ الأونلاين (Firebase Realtime Database عبر REST) =====
+// ضع رابط قاعدة البيانات هنا (أو أدخله من زر "المزامنة الأونلاين" في الشريط الجانبي)
+const FIREBASE_DB_URL_DEFAULT = '';
+// رابط خاص بمدرستك: أضف في آخر الرابط  #s=الرمز&u=رابط_القاعدة  فيُفعَّل الحفظ الأونلاين تلقائيًا لكل من يفتحه.
+// الرمز يبقى في الرابط فقط (وليس داخل الملف)، وبدونه تعمل أي مدرسة أخرى بالحفظ المحلي.
+(function readSyncFromLink() {
+  try {
+    const q = new URLSearchParams((location.hash || '').replace(/^#/, '') || location.search);
+    const c = q.get('s'), u = q.get('u');
+    if (c) localStorage.setItem('schoolSyncCode', c.trim());
+    if (u) localStorage.setItem('schoolSyncUrl', u.trim().replace(/\/+$/, ''));
+  } catch (e) {}
+})();
+const getSyncUrl = () => (localStorage.getItem('schoolSyncUrl') || FIREBASE_DB_URL_DEFAULT || '').trim().replace(/\/+$/, '');
+const getSyncCode = () => (localStorage.getItem('schoolSyncCode') || '').trim();
+const isScriptUrl = u => /^https:\/\/script\.google\.com\//.test(u);
+const cloudEndpoint = () => {
+  const u = getSyncUrl(), c = getSyncCode();
+  if (!u || !c) return null;
+  return isScriptUrl(u) ? u : `${u}/schools/${encodeURIComponent(c)}.json`;
+};
+function setSyncStatus(kind) {
+  const map = {
+    local:   ['💾 حفظ محلي (المزامنة غير مفعلة)', 'bg-slate-500'],
+    syncing: ['⏳ جارٍ الحفظ أونلاين...', 'bg-amber-400'],
+    ok:      ['☁️ محفوظ أونلاين', 'bg-emerald-500'],
+    error:   ['⚠️ تعذر الاتصال بالسحابة', 'bg-rose-500'],
+  };
+  const [txt, cls] = map[kind] || map.local;
+  const l = document.getElementById('syncLabel'), d = document.getElementById('syncDot');
+  if (l) l.textContent = txt;
+  if (d) d.className = 'w-2 h-2 rounded-full animate-pulse ' + cls;
+}
+let syncTimer = null, syncBusy = false;
+async function pushCloud() {
+  const url = cloudEndpoint();
+  if (!url) { setSyncStatus('local'); return; }
+  setSyncStatus('syncing');
+  try {
+    // نخزن قاعدة البيانات كنص JSON واحد لأن مفاتيح Firebase لا تقبل النقطة وبعض الرموز
+    const payload = { updatedAt: db.updatedAt || Date.now(), data: JSON.stringify(db) };
+    if (isScriptUrl(url)) {
+      // Google Apps Script: طلب بسيط (text/plain) لتجنب مشكلة CORS
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ code: getSyncCode(), ...payload }) });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || 'denied');
+    } else {
+      const r = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!r.ok) throw new Error(r.status);
+    }
+    setSyncStatus('ok');
+  } catch (e) { setSyncStatus('error'); }
+}
+async function pullCloud() {
+  const url = cloudEndpoint();
+  if (!url || syncBusy) return;
+  syncBusy = true;
+  try {
+    const r = await fetch(isScriptUrl(url) ? `${url}?code=${encodeURIComponent(getSyncCode())}` : url, { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    const remote = await r.json();
+    if (remote && remote.error) throw new Error(remote.error);
+    if (!remote || !remote.data) { await pushCloud(); return; }   // أول مرة: ارفع النسخة المحلية
+    if ((remote.updatedAt || 0) > (db.updatedAt || 0)) {
+      db = JSON.parse(remote.data);
+      normalizeDb();
+      localStorage.setItem('schoolReserveDB', JSON.stringify(db));
+      const busy = !document.getElementById('modal').classList.contains('hidden') ||
+                   /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
+      if (!busy && window.App) App.page(App._currentPage || 'home');
+      setSyncStatus('ok');
+    } else if ((remote.updatedAt || 0) < (db.updatedAt || 0)) {
+      await pushCloud();
+    } else setSyncStatus('ok');
+  } catch (e) { setSyncStatus('error'); }
+  finally { syncBusy = false; }
+}
+const save = () => {
+  db.updatedAt = Date.now();
+  localStorage.setItem('schoolReserveDB', JSON.stringify(db));
+  if (cloudEndpoint()) { clearTimeout(syncTimer); syncTimer = setTimeout(pushCloud, 1000); }
+};
 const key = (id, d, p) => id + '|' + d + '|' + p;
 const freeKey = (id, d, p) => id + '|' + d + '|' + p;
 const lesson = (id, d, p) => db.s[key(id, d, p)] || { sub: '', cl: '' };
+const pad2 = n => String(n).padStart(2, '0');
+const localISODate = (d = new Date()) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const dayNameFromISO = iso => { const [y, m, dd] = String(iso || '').split('-').map(Number); if (!y) return null; const g = new Date(y, m - 1, dd).getDay(); return g <= 4 ? DAYS[g] : null; };
+const dmy = iso => { const [y, m, d] = String(iso || '').split('-'); return y ? `${d}-${m}-${y}` : ''; };
+const printDayName = d => d === 'الاثنين' ? 'الإثنين' : d;
+const PERIOD_ORDINALS = ['الأولى', 'الثانية', 'الثالثة', 'الرابعة', 'الخامسة', 'السادسة', 'السابعة', 'الثامنة'];
+// قواعد الاحتياط
+const BREAK_AFTER_PERIOD = 4;   // الفسحة بعد الحصة الرابعة
+const MAX_DAILY_LOAD = 5;       // من لديه 5 حصص في اليوم يُستبعد من الاحتياط
+const MAX_CONSECUTIVE = 2;      // لا تزيد الحصص المتتالية عن حصتين
 const isFreed = (id, d, p) => !!db.free[freeKey(id, d, p)];
 const activeTeachers = () => db.teachers.filter(t => t.active);
 
@@ -293,6 +392,39 @@ const App = {
   },
   openM(t, b) { $('mt').textContent = t; $('mb').innerHTML = b; $('modal').classList.remove('hidden'); $('modal').classList.add('flex'); },
   closeM() { $('modal').classList.add('hidden'); $('modal').classList.remove('flex'); },
+
+  openSyncSettings() {
+    this.openM('المزامنة الأونلاين', `
+      <div class="space-y-4">
+        <p class="text-xs text-slate-500 leading-relaxed">أدخل نفس الرابط ونفس الرمز في كل جهاز تفتح منه البرنامج، وستتزامن البيانات تلقائيًا بينها. الرمز بمثابة كلمة سر: لا تشاركه إلا مع من تثق به.</p>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">رابط الحفظ الأونلاين (Google Apps Script أو Firebase)</label>
+          <input id="syncUrl" dir="ltr" value="${esc(getSyncUrl())}" placeholder="https://script.google.com/macros/s/.../exec" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">رمز المدرسة (سري)</label>
+          <input id="syncCode" dir="ltr" value="${esc(getSyncCode())}" placeholder="مثال: school-8f3k29x7q1" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">
+        </div>
+        <div class="flex gap-3">
+          <button onclick="App.saveSyncSettings()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white p-3.5 rounded-xl font-semibold">حفظ وتفعيل</button>
+          <button onclick="App.disableSync()" class="px-5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold">إيقاف</button>
+        </div>
+      </div>`);
+  },
+  async saveSyncSettings() {
+    const u = ($('syncUrl').value || '').trim().replace(/\/+$/, ''), c = ($('syncCode').value || '').trim();
+    if (!/^https:\/\/.+/.test(u) || c.length < 6) { this.alert('أدخل رابط قاعدة البيانات كاملًا ورمزًا من 6 أحرف على الأقل.'); return; }
+    localStorage.setItem('schoolSyncUrl', u);
+    localStorage.setItem('schoolSyncCode', c);
+    this.closeM();
+    await pullCloud();
+  },
+  disableSync() {
+    localStorage.removeItem('schoolSyncUrl');
+    localStorage.removeItem('schoolSyncCode');
+    this.closeM();
+    setSyncStatus('local');
+  },
 
   openSchoolSettings() {
     this.openM('إعدادات المدرسة والشعار', `
@@ -751,7 +883,7 @@ const App = {
         </div>
         <div>
           <label class="block text-xs font-bold text-slate-600 mb-1">الفصل / الشعبة</label>
-          <input id="cmc" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium" placeholder="مثال: أول ثانوي أ" value="${esc(l.cl)}">
+          <input id="cmc" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium" placeholder="مثال: 11/5" value="${esc(l.cl || l.cls || '')}">
         </div>
         <label class="flex items-center gap-3 p-3 bg-amber-50/50 border border-amber-200/60 rounded-xl cursor-pointer">
           <input id="cmf" type="checkbox" ${freed ? 'checked' : ''} class="w-4 h-4 accent-amber-600 rounded">
@@ -769,7 +901,7 @@ const App = {
   saveCellInModal(id, d, p) {
     const sub = $('cms')?.value.trim() || '';
     const cl = $('cmc')?.value.trim() || '';
-    if (sub || cl) db.s[key(id, d, p)] = { sub, cl }; else delete db.s[key(id, d, p)];
+    if (sub || cl) db.s[key(id, d, p)] = { ...(db.s[key(id, d, p)] || {}), sub, cl }; else delete db.s[key(id, d, p)];
     if ($('cmf')?.checked) db.free[freeKey(id, d, p)] = true; else delete db.free[freeKey(id, d, p)];
     save();
     this.page(this._currentPage || 'teachers');
@@ -876,7 +1008,7 @@ const App = {
   },
 
   saveL(id, d, p) {
-    db.s[key(id, d, p)] = { sub: $('ms').value.trim(), cl: $('mc').value.trim() };
+    db.s[key(id, d, p)] = { ...(db.s[key(id, d, p)] || {}), sub: $('ms').value.trim(), cl: $('mc').value.trim() };
     if ($('mf').checked) db.free[freeKey(id, d, p)] = true; else delete db.free[freeKey(id, d, p)];
     save();
     this.closeM();
@@ -1372,6 +1504,15 @@ const App = {
   // بما أن كل (شعبة + مادة) مرتبطة بمعلم واحد فقط، نبني: (شعبة+مادة) -> معلم من "الحصص"،
   // ثم نمر على كل شيتات المواد لتحديد يوم/حصة كل معلم، ونتجاهل كل شيء آخر (الغرف، الفصول،
   // شيتات "المعلمون المتاحون"، إلخ) كما طلب المستخدم.
+  // "الحادي عشر أساسي/5" -> "11/5" (للطباعة فقط، ولا يفعّل مؤشر الحصص المشتركة)
+  shortClass(name) {
+    const s = String(name || '').replace(/\s+/g, '');
+    const grades = [['الحاديعشر', 11], ['الثانيعشر', 12], ['العاشر', 10], ['التاسع', 9], ['الثامن', 8], ['السابع', 7], ['السادس', 6], ['الخامس', 5], ['الرابع', 4], ['الثالث', 3], ['الثاني', 2], ['الأول', 1]];
+    const sec = s.match(/\/(\d+)$/);
+    const g = grades.find(([w]) => s.startsWith(w));
+    return g && sec ? `${g[1]}/${sec[1]}` : s;
+  },
+
   parseAscTeacherWorkbook(wb) {
     if (!wb.SheetNames.includes('الحصص')) return null;
     const subjectSheetNames = wb.SheetNames.filter(n => n.trim().endsWith('.'));
@@ -1430,7 +1571,7 @@ const App = {
           // قد تكون الحصة مشتركة بين أكثر من معلم لنفس الشعبة/المادة (تدريس مشترك) -
           // ننزل الحصة لكل معلم منهم بدلًا من الاحتفاظ بمعلم واحد فقط.
           const teacherList = classSubjTeacher[cls + '|' + subject];
-          if (teacherList) teacherList.forEach(teacher => out.push({ teacher, day, period, sub: subject, cl: '' }));
+          if (teacherList) teacherList.forEach(teacher => out.push({ teacher, day, period, sub: subject, cl: '', cls: this.shortClass(cls) }));
         }
       });
     });
@@ -1623,6 +1764,7 @@ const App = {
       db.s[key(t.id, x.day, x.period)] = {
         sub: x.sub || 'اسم المادة',
         cl: x.cl || '',
+        cls: x.cls || '',
         shared: sharedTeachers.length > 0,
         sharedWith: sharedTeachers
       };
@@ -1720,6 +1862,10 @@ const App = {
             <select id="ft" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">${db.teachers.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select>
           </div>
         </div>
+        <label class="flex items-center gap-3 p-3 bg-amber-50/60 border border-amber-200/70 rounded-xl cursor-pointer">
+          <input id="fAllDay" type="checkbox" onchange="$('fp').disabled = this.checked" class="w-4 h-4 accent-amber-600">
+          <span class="text-sm font-semibold text-amber-900">تفريغ المعلم اليوم كاملًا (كل حصص اليوم المحدد)</span>
+        </label>
         <div class="flex gap-3 pt-2">
           <button onclick="App.applyManualFree(true)" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white p-3.5 rounded-xl font-semibold shadow-md shadow-amber-500/10 transition-all">تفريغ المعلم</button>
           <button onclick="App.applyManualFree(false)" class="flex-1 border border-slate-200 hover:bg-slate-50 text-slate-700 p-3.5 rounded-xl font-semibold transition-all">إلغاء التفريغ</button>
@@ -1730,7 +1876,12 @@ const App = {
 
   applyManualFree(v) {
     const d = $('fd').value, p = +$('fp').value, id = +$('ft').value;
-    if (v) db.free[freeKey(id, d, p)] = true; else delete db.free[freeKey(id, d, p)];
+    if ($('fAllDay')?.checked) {
+      PERIODS.forEach(q => {
+        if (v) { const l = lesson(id, d, q); if (l.sub || l.cl) db.free[freeKey(id, d, q)] = true; }
+        else delete db.free[freeKey(id, d, q)];
+      });
+    } else if (v) db.free[freeKey(id, d, p)] = true; else delete db.free[freeKey(id, d, p)];
     save();
     this.closeM();
     this.schedule();
@@ -1752,6 +1903,10 @@ const App = {
           <label class="block text-xs font-bold text-slate-600 mb-1">المادة</label>
           <select id="ss" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">${subjects.map(s => `<option>${esc(s)}</option>`).join('')}</select>
         </div>
+        <label class="flex items-center gap-3 p-3 bg-indigo-50/60 border border-indigo-200/70 rounded-xl cursor-pointer">
+          <input id="sAllDay" type="checkbox" onchange="$('sp').disabled = this.checked" class="w-4 h-4 accent-indigo-600">
+          <span class="text-sm font-semibold text-indigo-900">تفريغ اليوم كاملًا (كل حصص هذه المادة في اليوم المحدد)</span>
+        </label>
         <div class="flex gap-3 pt-2">
           <button onclick="App.applySubjectFree(true)" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white p-3.5 rounded-xl font-semibold shadow-md shadow-indigo-600/10 transition-all">تفريغ معلمي هذه المادة</button>
           <button onclick="App.applySubjectFree(false)" class="flex-1 border border-slate-200 hover:bg-slate-50 text-slate-700 p-3.5 rounded-xl font-semibold transition-all">إلغاء التفريغ</button>
@@ -1762,10 +1917,13 @@ const App = {
 
   applySubjectFree(v) {
     const d = $('sd').value, p = +$('sp').value, s = $('ss').value;
+    const allDay = $('sAllDay')?.checked;
     db.teachers.forEach(t => {
-      if (lesson(t.id, d, p).sub === s) {
-        if (v) db.free[freeKey(t.id, d, p)] = true; else delete db.free[freeKey(t.id, d, p)];
-      }
+      (allDay ? PERIODS : [p]).forEach(q => {
+        if (lesson(t.id, d, q).sub === s) {
+          if (v) db.free[freeKey(t.id, d, q)] = true; else delete db.free[freeKey(t.id, d, q)];
+        }
+      });
     });
     save();
     this.closeM();
@@ -1784,8 +1942,11 @@ const App = {
     db.teachers = Array.isArray(db.teachers) ? db.teachers : [];
     db.cnt = db.cnt && typeof db.cnt === 'object' ? db.cnt : {};
     db.free = db.free && typeof db.free === 'object' ? db.free : {};
-    const today = new Date().toISOString().slice(0, 10);
-    const defaultDay = 'الأحد';
+    const dr = db.absDraft && db.absDraft.absentIds && db.absDraft.absentIds.length ? db.absDraft : null;
+    const today = dr?.date || localISODate();
+    const todayDay = dayNameFromISO(today);
+    window.absWeekend = !todayDay;
+    const defaultDay = todayDay || 'الأحد';
 
     $('app').innerHTML = `
       <section class="bg-white rounded-3xl p-6 md:p-8 card-shadow border border-slate-100 max-w-7xl mx-auto mb-6">
@@ -1800,6 +1961,7 @@ const App = {
             <button onclick="App.runSmartDistributionPreview()" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold">⚖️ التوزيع الآلي</button>
             <button onclick="App.resetAbsenceDraft()" class="px-4 py-2.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-200">إعادة التوزيع</button>
             <button onclick="App.commitMultiAssignments()" class="px-5 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold">✓ اعتماد التوزيع</button>
+            <button onclick="App.printCurrentDraft()" class="px-4 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 font-semibold">🖨️ طباعة كشف الاحتياط</button>
           </div>
         </div>
 
@@ -1808,11 +1970,12 @@ const App = {
             <div class="grid grid-cols-1 gap-3 mb-4">
               <div>
                 <label class="block text-xs font-bold text-slate-600 mb-1">التاريخ</label>
-                <input id="date" type="date" value="${today}" onchange="App.buildAbsenceDraft()" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">
+                <input id="date" type="date" value="${today}" onchange="App.onAbsenceDateChange()" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">
+                <p id="dateNote" class="text-xs text-rose-600 font-semibold mt-1">${todayDay ? '' : '⚠️ هذا التاريخ عطلة أسبوعية (الجمعة/السبت) — لا توجد حصص.'}</p>
               </div>
               <div>
-                <label class="block text-xs font-bold text-slate-600 mb-1">اليوم الدراسي</label>
-                <select id="day" onchange="App.buildAbsenceDraft()" class="w-full border border-slate-200 rounded-xl p-3 bg-white font-bold outline-none focus:border-emerald-500">
+                <label class="block text-xs font-bold text-slate-600 mb-1">اليوم الدراسي <span class="font-normal text-slate-400">(يُحدَّد تلقائيًا من التاريخ)</span></label>
+                <select id="day" disabled class="w-full border border-slate-200 rounded-xl p-3 bg-slate-50 font-bold outline-none">
                   ${DAYS.map(d => `<option value="${d}" ${d === defaultDay ? 'selected' : ''}>${d}</option>`).join('')}
                 </select>
               </div>
@@ -1826,22 +1989,188 @@ const App = {
             <div id="absTeacherList" class="border border-slate-200 rounded-2xl overflow-auto max-h-[520px] divide-y">
               ${(db.teachers||[]).map(t=>`
                 <label class="abs-teacher-row flex items-center gap-3 p-3 hover:bg-emerald-50 cursor-pointer" data-name="${esc(t.name).toLowerCase()}">
-                  <input type="checkbox" class="abs-teacher-check w-4 h-4 accent-emerald-600" value="${t.id}" onchange="App.buildAbsenceDraft()">
+                  <input type="checkbox" class="abs-teacher-check w-4 h-4 accent-emerald-600" value="${t.id}" ${dr && dr.absentIds.includes(t.id) ? 'checked' : ''} onchange="App.buildAbsenceDraft()">
                   <span class="flex-1 text-sm font-semibold">${esc(t.name)}</span>
+                  <span class="abs-badge hidden text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700" data-tname="${esc(t.name)}">غائب مسجّل</span>
                   <span class="text-[11px] text-slate-400">${db.cnt[t.id]||0}/${t.quota||3}</span>
                 </label>`).join('')}
             </div>
           </div>
 
           <div class="lg:col-span-3">
+            <div id="registeredAbsences" class="mb-4"></div>
             <div id="absenceSummary" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4"></div>
             <div id="less" class="space-y-3"></div>
             <div id="reviewContainer" class="mt-4"></div>
           </div>
         </div>
       </section>`;
-    window.currentPreviewItems = [];
+    window.currentPreviewItems = dr ? Object.entries(dr.picks || {}).map(([k, v]) => {
+      const [a, pp] = k.split('|');
+      return { absentId: +a, period: +pp, day: dayNameFromISO(dr.date), selectedTeacherId: +v };
+    }) : [];
+    this.buildAbsenceDraft(true);
+    this.renderRegisteredAbsences();
+    this.refreshAbsentBadges();
+  },
+
+  // حفظ المسودة (المعلمون الغائبون + البدلاء) لتبقى ظاهرة عند العودة لصفحة الغياب
+  saveAbsDraft() {
+    const rows = window.currentPreviewItems || [];
+    const ids = this.getSelectedAbsentIds();
+    const next = ids.length ? {
+      date: $('date')?.value || localISODate(),
+      absentIds: ids,
+      picks: Object.fromEntries(rows.filter(r => r.selectedTeacherId).map(r => [`${r.absentId}|${r.period}`, r.selectedTeacherId]))
+    } : null;
+    if (JSON.stringify(next) === JSON.stringify(db.absDraft || null)) return;
+    db.absDraft = next;
+    save();
+  },
+
+  renderRegisteredAbsences() {
+    const box = $('registeredAbsences');
+    if (!box) return;
+    const iso = $('date')?.value;
+    const list = (db.log || []).filter(x => x.date === iso);
+    if (!list.length) { box.innerHTML = ''; return; }
+    const groups = {};
+    list.forEach(x => (groups[x.absent] ||= []).push(x));
+    box.innerHTML = `
+      <div class="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <b class="text-emerald-900">✅ الغياب المعتمد ليوم ${dmy(iso)} — ${esc(printDayName(list[0].day))} (${Object.keys(groups).length} غائب)</b>
+          <button onclick="App.printReserveForDate('${iso}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-semibold">🖨️ طباعة كشف الاحتياط</button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          ${Object.entries(groups).map(([name, rows]) => `
+            <div class="bg-white border border-emerald-100 rounded-xl p-3">
+              <div class="font-bold text-slate-800 mb-1">${esc(name)}</div>
+              ${rows.sort((a, b) => a.period - b.period).map(r => `<div class="text-xs text-slate-600">الحصة ${r.period} — ${esc(r.subject)}${r.className ? ' (' + esc(r.className) + ')' : ''} ← <b class="text-indigo-700">${esc(r.substitute)}</b></div>`).join('')}
+            </div>`).join('')}
+        </div>
+      </div>`;
+  },
+
+  refreshAbsentBadges() {
+    const iso = $('date')?.value;
+    const names = new Set((db.log || []).filter(x => x.date === iso).map(x => x.absent));
+    document.querySelectorAll('.abs-badge').forEach(b => b.classList.toggle('hidden', !names.has(b.dataset.tname)));
+  },
+
+  reserveSheetHTML(items, iso, dayName) {
+    const sc = db.school || {};
+    const printDate = localISODate().replace(/-/g, '/');
+    const dn = printDayName(dayName);
+    const byAbsent = [];
+    items.forEach(it => {
+      let g = byAbsent.find(x => x.name === it.absent);
+      if (!g) byAbsent.push(g = { name: it.absent, rows: [] });
+      g.rows.push(it);
+    });
+    const cell = 'border:1px solid #000;padding:6px 4px;text-align:center;';
+    const blocks = byAbsent.map(g => `
+      <div style="page-break-inside:avoid;margin-bottom:22px;">
+        <div style="font-size:13px;margin-bottom:4px;"><b>زملائي المعلمين / نظراً لغياب الزميل:</b> ${esc(g.name)} <b>لهذا اليوم ${esc(dn)}</b></div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px;">الموافق ${esc(dmy(iso))} أمل تسديد مكانه حسب الجدول الموضح والتوقيع بالعلم ,, ولكم جزيل الشكر</div>
+        <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+          <colgroup><col style="width:13%"><col style="width:10%"><col style="width:20%"><col style="width:32%"><col style="width:13%"><col style="width:12%"></colgroup>
+          <thead><tr style="font-weight:700;">
+            <th style="${cell}">الحصة</th><th style="${cell}">الصف</th><th style="${cell}">المادة</th>
+            <th style="${cell}">اسم المعلم للاحتياط</th><th style="${cell}">التوقيع</th><th style="${cell}">ملاحظة</th>
+          </tr></thead>
+          <tbody>
+            ${g.rows.sort((a, b) => a.period - b.period).map(r => `<tr>
+              <td style="${cell}">${PERIOD_ORDINALS[r.period - 1] || r.period}</td>
+              <td style="${cell}">${esc(r.className || '')}</td>
+              <td style="${cell}">${esc(r.subject || '')}</td>
+              <td style="${cell}">${esc(r.substitute || '')}</td>
+              <td style="${cell}">..........</td>
+              <td style="${cell}"></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`).join('');
+    return `
+      <div style="direction:rtl;font-family:Arial,Tahoma,sans-serif;color:#000;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;font-size:13px;line-height:1.9;margin-bottom:14px;">
+          <div>
+            <div>سلطنة عمان</div>
+            <div>${esc(sc.ministry || 'وزارة التعليم')}</div>
+            <div>${esc(sc.name || '')}</div>
+          </div>
+          ${sc.logo ? `<div style="text-align:center;"><img src="${esc(sc.logo)}" style="height:72px;max-width:120px;object-fit:contain;"></div>` : '<div></div>'}
+          <div style="text-align:right;">
+            <div>سجل توزيع حصص الاحتياط</div>
+            <div>تاريخ الطباعة: ${esc(printDate)}</div>
+            <div>اليوم: ${esc(dn)}</div>
+          </div>
+        </div>
+        ${blocks}
+        <div style="display:flex;justify-content:flex-end;margin-top:30px;">
+          <div style="text-align:center;font-size:13px;line-height:2;min-width:180px;">
+            <div>المدير</div>
+            <div>التوقيع</div>
+          </div>
+        </div>
+      </div>`;
+  },
+
+  printReserveSheet(items, iso, dayName, skipCheck) {
+    if (!items.length) { this.alert('لا توجد حصص احتياط لطباعتها.'); return; }
+    if (!skipCheck && items.some(i => !i.className) && !Object.values(db.s).some(c => c && c.cls)) {
+      this.confirm('بيانات الصفوف غير محفوظة في الجدول الحالي، فسيظهر عمود الصف فارغًا. لإظهاره: افتح «الجدول العام» وأعد رفع ملف الإكسل مرة واحدة (لن تتأثر العدادات). هل تريد الطباعة الآن بدون الصفوف؟',
+        () => this.printReserveSheet(items, iso, dayName, true), 'الصفوف غير متوفرة');
+      return;
+    }
+    let box = document.getElementById('printSheet');
+    if (!box) { box = document.createElement('div'); box.id = 'printSheet'; box.className = 'print-only'; document.body.appendChild(box); }
+    box.innerHTML = this.reserveSheetHTML(items, iso, dayName);
+    let st = document.getElementById('printSheetStyle');
+    if (!st) { st = document.createElement('style'); st.id = 'printSheetStyle'; document.body.appendChild(st); }
+    st.textContent = `@media print {
+      body > *:not(#printSheet) { display: none !important; }
+      @page { size: A4 portrait; margin: 12mm; }
+      #printSheet { display: block !important; }
+      #printSheet table { width: 100% !important; table-layout: fixed !important; font-size: 12px !important; }
+      #printSheet th, #printSheet td { padding: 6px 4px !important; font-size: 12px !important; }
+    }`;
+    const cleanup = () => { st.textContent = ''; box.innerHTML = ''; };
+    window.addEventListener('afterprint', cleanup, { once: true });
+    setTimeout(() => window.print(), 100);
+  },
+
+  printCurrentDraft() {
+    const rows = window.currentPreviewItems || [];
+    if (!rows.length) { this.alert('اختر المعلمين الغائبين ووزّع الحصص أولًا.'); return; }
+    const items = rows.map(r => ({
+      absent: r.absentName, period: r.period, className: r.className, subject: r.subject,
+      substitute: (db.teachers.find(t => t.id == r.selectedTeacherId) || {}).name || ''
+    }));
+    this.printReserveSheet(items, rows[0].date, rows[0].day);
+  },
+
+  printReserveForDate(iso) {
+    const list = (db.log || []).filter(x => x.date === iso);
+    this.printReserveSheet(list.map(x => ({ absent: x.absent, period: +x.period, className: x.className, subject: x.subject, substitute: x.substitute })),
+      iso, list[0]?.day || dayNameFromISO(iso) || '');
+  },
+
+  printReserveFromSelect() {
+    const iso = $('archiveDate')?.value;
+    if (!iso) { this.alert('لا توجد سجلات في الأرشيف لطباعتها.'); return; }
+    this.printReserveForDate(iso);
+  },
+
+  onAbsenceDateChange() {
+    const iso = $('date')?.value || '';
+    const dn = dayNameFromISO(iso);
+    window.absWeekend = !dn;
+    if (dn && $('day')) $('day').value = dn;
+    if ($('dateNote')) $('dateNote').textContent = dn ? '' : '⚠️ هذا التاريخ عطلة أسبوعية (الجمعة/السبت) — لا توجد حصص.';
     this.buildAbsenceDraft();
+    this.renderRegisteredAbsences();
+    this.refreshAbsentBadges();
   },
 
   filterAbsentList() {
@@ -1861,11 +2190,12 @@ const App = {
     return [...document.querySelectorAll('.abs-teacher-check:checked')].map(x => +x.value);
   },
 
-  buildAbsenceDraft() {
-    const date = $('date')?.value || new Date().toISOString().slice(0,10);
-    const day = $('day')?.value || 'الأحد';
+  buildAbsenceDraft(noSave) {
+    const date = $('date')?.value || localISODate();
+    const day = dayNameFromISO(date) || $('day')?.value || 'الأحد';
+    if ($('day') && dayNameFromISO(date)) $('day').value = day;
 
-    const ids = this.getSelectedAbsentIds();
+    const ids = window.absWeekend ? [] : this.getSelectedAbsentIds();
     const old = window.currentPreviewItems || [];
     const rows = [];
 
@@ -1883,7 +2213,7 @@ const App = {
             date,
             period: p,
             subject: l.sub || 'اسم المادة',
-            className: l.cl || '',
+            className: l.cl || l.cls || '',
             selectedTeacherId: oldRow?.selectedTeacherId || null,
             scoredList: [],
             status: oldRow?.selectedTeacherId ? 'تم التوزيع' : 'غير موزعة'
@@ -1894,8 +2224,9 @@ const App = {
 
     window.currentPreviewItems = rows;
 
-    if ($('absCount')) $('absCount').textContent = `${ids.length} محدد`;
+    if ($('absCount')) $('absCount').textContent = `${this.getSelectedAbsentIds().length} محدد`;
     this.renderAbsenceDraft();
+    if (noSave !== true) this.saveAbsDraft();
   },
 
   renderAbsenceDraft() {
@@ -1998,9 +2329,11 @@ const App = {
 
   getAbsenceCandidates(row, usedAtPeriod = new Set()) {
     const absentIds = new Set((window.currentPreviewItems||[]).map(x=>x.absentId));
+    const regAbsent = new Set((db.log||[]).filter(x => x.date === row.date).map(x => x.absent));
     return (db.teachers||[])
       .filter(t => t.active)
       .filter(t => !absentIds.has(+t.id))
+      .filter(t => !regAbsent.has(t.name))
       .filter(t => !usedAtPeriod.has(+t.id))
       .filter(t => {
         const l = lesson(t.id, row.day, row.period);
@@ -2009,7 +2342,37 @@ const App = {
       .filter(t => {
         const quota = Number(t.quota ?? 3);
         return (db.cnt[t.id]||0) < quota;
-      });
+      })
+      .filter(t => this.reserveRulesOk(t, row));
+  },
+
+  // الحصص المشغولة للمعلم في يوم معيّن: حصصه الفعلية (غير المفرَّغة) + احتياطات موزعة له في نفس اليوم
+  teacherBusyPeriods(t, row) {
+    const busy = new Set();
+    PERIODS.forEach(q => {
+      const l = lesson(t.id, row.day, q);
+      if ((l.sub || l.cl) && !isFreed(t.id, row.day, q)) busy.add(q);
+    });
+    (window.currentPreviewItems || []).forEach(x => {
+      if (x !== row && x.day === row.day && x.selectedTeacherId == t.id) busy.add(x.period);
+    });
+    (db.log || []).forEach(x => {
+      if (x.date === row.date && x.substitute === t.name) busy.add(+x.period);
+    });
+    return busy;
+  },
+
+  // 1) من لديه 5 حصص في اليوم يُستبعد  2) لا تتكوّن 3 حصص متتالية (الفسحة بعد الحصة 4 تقطع التسلسل)
+  reserveRulesOk(t, row) {
+    const busy = this.teacherBusyPeriods(t, row);
+    if (busy.size >= MAX_DAILY_LOAD) return false;
+    const p = row.period;
+    const lo = p <= BREAK_AFTER_PERIOD ? 1 : BREAK_AFTER_PERIOD + 1;
+    const hi = p <= BREAK_AFTER_PERIOD ? BREAK_AFTER_PERIOD : PERIODS.length;
+    let run = 1;
+    for (let q = p - 1; q >= lo && busy.has(q); q--) run++;
+    for (let q = p + 1; q <= hi && busy.has(q); q++) run++;
+    return run <= MAX_CONSECUTIVE;
   },
 
   scoreAbsenceCandidate(t, row, draftRows) {
@@ -2046,7 +2409,7 @@ const App = {
     const groups = {};
     rows.forEach(r => { const k = `${r.day}|${r.period}`; (groups[k] ||= []).push(r); });
 
-    Object.values(groups).forEach(group => {
+    Object.values(groups).sort((a, b) => a[0].period - b[0].period).forEach(group => {
       const used = new Set();
 
       group.sort((a,b) =>
@@ -2074,6 +2437,7 @@ const App = {
     });
 
     this.renderAbsenceDraft();
+    this.saveAbsDraft();
     $('reviewContainer').innerHTML = `
       <div class="mt-4 p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-sm">
         <b>تم تنفيذ التوزيع الآلي.</b>
@@ -2090,6 +2454,7 @@ const App = {
       row.selectedTeacherId = null;
       row.status = 'غير موزعة';
       this.renderAbsenceDraft();
+      this.saveAbsDraft();
       return;
     }
 
@@ -2107,12 +2472,14 @@ const App = {
     row.selectedTeacherId = tid;
     row.status = 'تم التوزيع';
     this.renderAbsenceDraft();
+    this.saveAbsDraft();
   },
 
   resetAbsenceDraft() {
     const rows = window.currentPreviewItems || [];
     rows.forEach(r=>{r.selectedTeacherId=null;r.scoredList=[];r.status='غير موزعة';});
     this.renderAbsenceDraft();
+    this.saveAbsDraft();
     if ($('reviewContainer')) $('reviewContainer').innerHTML = '';
   },
 
@@ -2153,10 +2520,13 @@ const App = {
       db.cnt[substitute.id] = (db.cnt[substitute.id]||0) + 1;
     });
 
+    const commitDate = rows[0].date;
+    db.absDraft = null;
     save();
     window.currentPreviewItems = [];
     this.reportsTab = 'archive';
     this.page('reports');
+    this.confirm('تم اعتماد التوزيع. هل تريد طباعة كشف الاحتياط الآن؟', () => this.printReserveForDate(commitDate), 'طباعة كشف الاحتياط');
   },
 
   reports(tab) {
@@ -2191,6 +2561,12 @@ const App = {
 
           <div class="no-print flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
             <h3 class="font-bold text-2xl text-slate-900">أرشيف الغياب (التوزيع الذكي واليدوي)</h3>
+            <div class="flex flex-wrap items-center gap-2">
+              <select id="archiveDate" class="border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white font-semibold">
+                ${[...new Set(db.log.map(x => x.date))].filter(Boolean).sort().reverse().map(d => `<option value="${d}">${dmy(d)} — ${printDayName(dayNameFromISO(d) || '')}</option>`).join('') || '<option value="">لا توجد سجلات</option>'}
+              </select>
+              <button onclick="App.printReserveFromSelect()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-semibold text-sm">🖨️ طباعة كشف الاحتياط</button>
+            </div>
             <button onclick="App.clearLog()" class="border border-rose-200 text-rose-600 hover:bg-rose-50 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all flex items-center gap-2">🗑️ مسح الأرشيف وإعادة العدادات</button>
           </div>
 
@@ -2346,6 +2722,15 @@ const App = {
 
 window.App = App;
 App.page('home');
+if (cloudEndpoint()) {
+  setSyncStatus('syncing');
+  pullCloud();
+  setInterval(pullCloud, 20000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) pullCloud(); });
+} else {
+  setSyncStatus('local');
+  setInterval(() => { if (cloudEndpoint()) pullCloud(); }, 20000);
+}
 
 </script>
 </body>
