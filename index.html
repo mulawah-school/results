@@ -719,6 +719,7 @@ const App = {
                     </label>
                     <div class="flex gap-2">
                       <button onclick="App.openTeacherSchedule(${t.id})" class="text-emerald-600 hover:bg-emerald-50 px-3 py-1.5 rounded-lg text-xs font-semibold">📅 الجدول</button>
+                      <button onclick="App.resetTeacherCount(${t.id})" title="تصفير عداد الاحتياط لهذا المعلم" class="text-amber-700 hover:bg-amber-50 px-3 py-1.5 rounded-lg text-xs font-semibold">↺ تصفير النسبة</button>
                       <button onclick="App.delT(${t.id})" class="text-rose-500 hover:bg-rose-50 px-3 py-1.5 rounded-lg text-xs font-semibold">حذف</button>
                     </div>
                   </div>
@@ -930,6 +931,17 @@ const App = {
       save();
       this.page(this._currentPage || 'teachers');
     }, 'حذف معلم');
+  },
+
+  // تصفير عداد الاحتياط (النسبة) لمعلم واحد فقط، دون التأثير على بقية المعلمين أو سجل الأرشيف
+  resetTeacherCount(id) {
+    const t = db.teachers.find(t => t.id == id);
+    if (!t) return;
+    this.confirm(`هل تريد تصفير عداد الاحتياط للمعلم «${t.name}» وإعادة النسبة إلى 0%؟ لا يؤثر هذا على سجل أرشيف الغياب.`, () => {
+      db.cnt[id] = 0;
+      save();
+      this.page(this._currentPage || 'teachers');
+    }, 'تصفير النسبة');
   },
 
   schedule() {
@@ -1900,8 +1912,8 @@ const App = {
           <select id="sp" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">${PERIODS.map(p => `<option value="${p}">الحصة ${p}</option>`).join('')}</select>
         </div>
         <div>
-          <label class="block text-xs font-bold text-slate-600 mb-1">المادة</label>
-          <select id="ss" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">${subjects.map(s => `<option>${esc(s)}</option>`).join('')}</select>
+          <label class="block text-xs font-bold text-slate-600 mb-1">المادة <span class="font-normal text-slate-400">(اختر مادة أو أكثر بالضغط مع Ctrl / Cmd)</span></label>
+          <select id="ss" multiple size="6" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">${subjects.map(s => `<option>${esc(s)}</option>`).join('')}</select>
         </div>
         <label class="flex items-center gap-3 p-3 bg-indigo-50/60 border border-indigo-200/70 rounded-xl cursor-pointer">
           <input id="sAllDay" type="checkbox" onchange="$('sp').disabled = this.checked" class="w-4 h-4 accent-indigo-600">
@@ -1916,11 +1928,13 @@ const App = {
   },
 
   applySubjectFree(v) {
-    const d = $('sd').value, p = +$('sp').value, s = $('ss').value;
+    const d = $('sd').value, p = +$('sp').value;
+    const selected = new Set([...$('ss').selectedOptions].map(o => o.value));
+    if (!selected.size) { this.alert('اختر مادة واحدة على الأقل.'); return; }
     const allDay = $('sAllDay')?.checked;
     db.teachers.forEach(t => {
       (allDay ? PERIODS : [p]).forEach(q => {
-        if (lesson(t.id, d, q).sub === s) {
+        if (selected.has(lesson(t.id, d, q).sub)) {
           if (v) db.free[freeKey(t.id, d, q)] = true; else delete db.free[freeKey(t.id, d, q)];
         }
       });
@@ -1987,12 +2001,12 @@ const App = {
             </div>
             <input id="absSearch" oninput="App.filterAbsentList()" placeholder="🔎 ابحث عن معلم..." class="w-full border border-slate-200 rounded-xl p-3 mb-2">
             <div id="absTeacherList" class="border border-slate-200 rounded-2xl overflow-auto max-h-[520px] divide-y">
-              ${(db.teachers||[]).map(t=>`
+              ${(db.teachers||[]).slice().sort((a,b) => String(a.name).localeCompare(String(b.name), 'ar')).map(t=>`
                 <label class="abs-teacher-row flex items-center gap-3 p-3 hover:bg-emerald-50 cursor-pointer" data-name="${esc(t.name).toLowerCase()}">
                   <input type="checkbox" class="abs-teacher-check w-4 h-4 accent-emerald-600" value="${t.id}" ${dr && dr.absentIds.includes(t.id) ? 'checked' : ''} onchange="App.buildAbsenceDraft()">
                   <span class="flex-1 text-sm font-semibold">${esc(t.name)}</span>
                   <span class="abs-badge hidden text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700" data-tname="${esc(t.name)}">غائب مسجّل</span>
-                  <span class="text-[11px] text-slate-400">${db.cnt[t.id]||0}/${t.quota||3}</span>
+                  <span class="text-[11px] text-slate-400">${db.cnt[t.id]||0}/${t.quota||3} (${(t.quota||0) > 0 ? Math.min(100, Math.round(((db.cnt[t.id]||0)/(t.quota||3))*100)) : 0}%)</span>
                 </label>`).join('')}
             </div>
           </div>
@@ -2143,11 +2157,17 @@ const App = {
   printCurrentDraft() {
     const rows = window.currentPreviewItems || [];
     if (!rows.length) { this.alert('اختر المعلمين الغائبين ووزّع الحصص أولًا.'); return; }
-    const items = rows.map(r => ({
+    const iso = rows[0].date, dayName = rows[0].day;
+    const draftItems = rows.map(r => ({
       absent: r.absentName, period: r.period, className: r.className, subject: r.subject,
       substitute: (db.teachers.find(t => t.id == r.selectedTeacherId) || {}).name || ''
     }));
-    this.printReserveSheet(items, rows[0].date, rows[0].day);
+    // لو تم اعتماد غياب آخر مسبقًا لنفس اليوم (معلم أُضيف متأخرًا)، يُدمج مع المسودة الحالية في نفس ورقة الطباعة
+    const already = (db.log || []).filter(x => x.date === iso);
+    const seen = new Set(draftItems.map(i => i.absent + '|' + i.period));
+    const merged = draftItems.concat(already.filter(x => !seen.has(x.absent + '|' + x.period))
+      .map(x => ({ absent: x.absent, period: +x.period, className: x.className, subject: x.subject, substitute: x.substitute })));
+    this.printReserveSheet(merged, iso, dayName);
   },
 
   printReserveForDate(iso) {
@@ -2252,17 +2272,17 @@ const App = {
     }
 
     const groups = {};
-    rows.forEach(r => { const k = `${r.day}|${r.period}`; (groups[k] ||= []).push(r); });
+    rows.forEach(r => { (groups[r.absentId] ||= []).push(r); });
 
     less.innerHTML = Object.values(groups)
-      .sort((a,b)=>a[0].period-b[0].period)
-      .map(group => `
+      .sort((a,b) => rows.indexOf(a[0]) - rows.indexOf(b[0]))
+      .map(group => {
+        group.sort((a,b) => a.period - b.period);
+        return `
         <div class="border border-slate-200 rounded-2xl overflow-hidden mb-4">
           <div class="px-4 py-3 bg-slate-50 flex flex-wrap justify-between items-center gap-2">
-            <b>الحصة ${group[0].period} — ${esc(group[0].day)}</b>
-            <span class="text-xs ${group.length>1?'text-amber-700 bg-amber-50':'text-slate-500 bg-white'} px-2.5 py-1 rounded-lg border">
-              ${group.length>1 ? `⚠️ ${group.length} حصص غياب متزامنة` : 'حصة غياب'}
-            </span>
+            <b>المعلم الغائب: ${esc(group[0].absentName)}</b>
+            <span class="text-xs text-slate-500 bg-white px-2.5 py-1 rounded-lg border">${group.length} حصة</span>
           </div>
           <div class="overflow-auto p-4 space-y-4">
             ${group.map((r,idx)=> {
@@ -2284,9 +2304,8 @@ const App = {
                 <div class="bg-slate-50/70 border border-slate-200 rounded-2xl p-4">
                   <div class="flex flex-wrap justify-between items-center gap-3 mb-3">
                     <div>
-                      <span class="text-xs text-slate-400 block">المعلم الغائب</span>
-                      <strong class="text-slate-900 text-base">${esc(r.absentName)}</strong>
-                      <span class="text-xs text-slate-500 mr-2">(${esc(r.subject)} - ${esc(r.className)})</span>
+                      <span class="text-xs text-slate-400 block">الحصة ${r.period}</span>
+                      <span class="text-sm text-slate-600">${esc(r.subject)} - ${esc(r.className)}</span>
                     </div>
                     <div class="flex items-center gap-2">
                       <label class="text-xs font-bold text-slate-700">المعلم البديل:</label>
@@ -2322,7 +2341,8 @@ const App = {
               `;
             }).join('')}
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
 
     if (review) review.innerHTML = '';
   },
