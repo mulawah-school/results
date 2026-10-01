@@ -719,7 +719,6 @@ const App = {
                     </label>
                     <div class="flex gap-2">
                       <button onclick="App.openTeacherSchedule(${t.id})" class="text-emerald-600 hover:bg-emerald-50 px-3 py-1.5 rounded-lg text-xs font-semibold">📅 الجدول</button>
-                      <button onclick="App.resetTeacherCount(${t.id})" title="تصفير عداد الاحتياط لهذا المعلم" class="text-amber-700 hover:bg-amber-50 px-3 py-1.5 rounded-lg text-xs font-semibold">↺ تصفير النسبة</button>
                       <button onclick="App.delT(${t.id})" class="text-rose-500 hover:bg-rose-50 px-3 py-1.5 rounded-lg text-xs font-semibold">حذف</button>
                     </div>
                   </div>
@@ -782,7 +781,10 @@ const App = {
             <h3 class="font-bold text-2xl text-slate-900">إدارة المعلمين حسب التخصص</h3>
             <p class="text-sm text-slate-500 mt-1">يتم استخراج التخصص من المادة الفعلية في الجدول، مع عرض عدد الحصص الفعلية والاحتياط المأخوذ والحد المسموح.</p>
           </div>
-          <button onclick="App.addT()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-3 rounded-2xl font-semibold">➕ إضافة معلم</button>
+          <div class="flex gap-2">
+            <button onclick="App.resetAllCounts()" class="border border-amber-300 text-amber-700 hover:bg-amber-50 px-4 py-3 rounded-2xl font-semibold">↺ تصفير جميع المعلمين</button>
+            <button onclick="App.addT()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-3 rounded-2xl font-semibold">➕ إضافة معلم</button>
+          </div>
         </div>
 
         ${academic.length ? academic.map(renderGroup).join('') : '<div class="py-10 text-center text-slate-400">لم يتم استيراد جدول المعلمين بعد.</div>'}
@@ -933,15 +935,13 @@ const App = {
     }, 'حذف معلم');
   },
 
-  // تصفير عداد الاحتياط (النسبة) لمعلم واحد فقط، دون التأثير على بقية المعلمين أو سجل الأرشيف
-  resetTeacherCount(id) {
-    const t = db.teachers.find(t => t.id == id);
-    if (!t) return;
-    this.confirm(`هل تريد تصفير عداد الاحتياط للمعلم «${t.name}» وإعادة النسبة إلى 0%؟ لا يؤثر هذا على سجل أرشيف الغياب.`, () => {
-      db.cnt[id] = 0;
+  // تصفير عداد الاحتياط (النسبة) لجميع المعلمين دفعة واحدة، دون مسح سجل أرشيف الغياب
+  resetAllCounts() {
+    this.confirm('هل تريد تصفير عداد الاحتياط (النسبة) لجميع المعلمين وإعادتها إلى 0%؟ لا يؤثر هذا على سجل أرشيف الغياب.', () => {
+      db.teachers.forEach(t => { db.cnt[t.id] = 0; });
       save();
       this.page(this._currentPage || 'teachers');
-    }, 'تصفير النسبة');
+    }, 'تصفير جميع المعلمين');
   },
 
   schedule() {
