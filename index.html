@@ -72,9 +72,9 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
       </div>
       <nav class="space-y-1.5" id="nav-container">
         <button data-page="home" onclick="App.page('home')" class="nav w-full flex items-center gap-3 text-right px-4 py-3 rounded-xl font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">🏠 لوحة التحكم</button>
-        <button data-page="teachers" onclick="App.page('teachers')" class="nav w-full flex items-center gap-3 text-right px-4 py-3 rounded-xl font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">👨‍🏫 إدارة المعلمين</button>
         <button data-page="schedule" onclick="App.page('schedule')" class="nav w-full flex items-center gap-3 text-right px-4 py-3 rounded-xl font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">🗓️ الجدول العام</button>
-        <button data-page="absence" onclick="App.page('absence')" class="nav w-full flex items-center gap-3 text-right px-4 py-3 rounded-xl font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">📝 تسجيل غياب</button>
+        <button data-page="teachers" onclick="App.page('teachers')" class="nav w-full flex items-center gap-3 text-right px-4 py-3 rounded-xl font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">👨‍🏫 إدارة المعلمين</button>
+        <button data-page="absence" onclick="App.page('absence')" class="nav w-full flex items-center gap-3 text-right px-4 py-3 rounded-xl font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">📝 تسجيل الغياب</button>
         <button data-page="reports" onclick="App.page('reports')" class="nav w-full flex items-center gap-3 text-right px-4 py-3 rounded-xl font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">📊 تقارير الإحصاء والنسب</button>
       </nav>
     </div>
@@ -123,6 +123,16 @@ const DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربع�
 const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8];
 const $ = id => document.getElementById(id);
 const esc = x => String(x ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+// ===== إعدادات واتساب (Meta WhatsApp Cloud API) =====
+// تُحفظ في متصفح هذا الجهاز فقط (localStorage) ولا تُرسَل مع المزامنة الأونلاين، لأنها بيانات دخول حسّاسة.
+// لا يحتاج المستخدم إدخال غير Token و Phone Number ID؛ البقية ثابتة في الكود مطابقة لقالب الرسالة المعتمد.
+const WA_TEMPLATE_NAME = 'substitute_period_notification';
+const WA_LANG = 'ar';
+const WA_COUNTRY = '968';
+const waGet = k => localStorage.getItem(k) || '';
+const waConfigured = () => !!(waGet('waToken') && waGet('waPhoneId'));
+const waMask = v => v ? ('•'.repeat(Math.max(0, v.length - 4)) + v.slice(-4)) : '';
 
 const defaultTeachers = [];
 
@@ -451,6 +461,108 @@ const App = {
     `);
   },
 
+  openWhatsAppSettings() {
+    const token = waGet('waToken'), phoneId = waGet('waPhoneId');
+    const configured = waConfigured();
+    this.openM('إعدادات واتساب (Meta WhatsApp Cloud API)', `
+      <div class="space-y-4">
+        <p class="text-xs text-slate-500 leading-relaxed">تُستخدم لإرسال رسالة واتساب تلقائية للمعلم البديل عند إسناد حصة احتياط له. تُحفظ في هذا الجهاز فقط ولا تُشارك مع المزامنة الأونلاين.</p>
+        ${configured ? `
+          <div class="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-sm">
+            <div class="font-bold text-emerald-900 mb-1">✅ واتساب مفعّل على هذا الجهاز</div>
+            <div class="text-emerald-800">Token: <span dir="ltr">${esc(waMask(token))}</span></div>
+            <div class="text-emerald-800">Phone Number ID: <span dir="ltr">${esc(waMask(phoneId))}</span></div>
+          </div>
+          <button onclick="App.disableWhatsApp()" class="w-full border border-rose-300 text-rose-700 hover:bg-rose-50 p-3 rounded-xl font-semibold">🚫 تعطيل واتساب (حذف Token وID من هذا الجهاز)</button>
+        ` : `
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Access Token</label>
+            <input id="waTokenInput" dir="ltr" type="password" placeholder="EAAG..." class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium" autocomplete="off">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Phone Number ID</label>
+            <input id="waPhoneIdInput" dir="ltr" placeholder="123456789012345" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">
+          </div>
+          <button onclick="App.saveWhatsAppSettings()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-3.5 rounded-xl font-semibold shadow-md shadow-emerald-600/20 transition-all">حفظ وتفعيل</button>
+        `}
+      </div>
+    `);
+  },
+
+  saveWhatsAppSettings() {
+    const token = $('waTokenInput')?.value.trim();
+    const phoneId = $('waPhoneIdInput')?.value.trim();
+    if (!token || !phoneId) { this.alert('الرجاء تعبئة Token و Phone Number ID.'); return; }
+    localStorage.setItem('waToken', token);
+    localStorage.setItem('waPhoneId', phoneId);
+    this.closeM();
+    this.page(this._currentPage || 'home');
+  },
+
+  disableWhatsApp() {
+    this.confirm('هل تريد تعطيل واتساب؟ سيتم حذف Token و Phone Number ID المحفوظين في هذا الجهاز نهائيًا.', () => {
+      ['waToken', 'waPhoneId'].forEach(k => localStorage.removeItem(k));
+      this.closeM();
+      this.page(this._currentPage || 'home');
+    }, 'تعطيل واتساب');
+  },
+
+  waFormatPhone(raw) {
+    let p = this.normalize(raw).replace(/[^\d+]/g, '').replace(/^0+/, '');
+    if (p.startsWith('+')) p = p.slice(1);
+    if (!p.startsWith(WA_COUNTRY)) p = WA_COUNTRY + p;
+    return p;
+  },
+
+  // منع إرسال رسالة واتساب أكثر من مرة لنفس المعلم في نفس اليوم ونفس الحصة
+  waSentKey(teacherId, isoDate, period) { return `${isoDate}|${period}|${teacherId}`; },
+  waAlreadySent(teacherId, isoDate, period) {
+    return !!(db.waSentLog && db.waSentLog[this.waSentKey(teacherId, isoDate, period)]);
+  },
+  waMarkSent(teacherId, isoDate, period) {
+    db.waSentLog = db.waSentLog || {};
+    db.waSentLog[this.waSentKey(teacherId, isoDate, period)] = Date.now();
+    save();
+  },
+
+  // يرسل رسالة القالب المعتمد في Meta لمعلم واحد عبر واتساب. isoDate لازم لمنع التكرار لنفس اليوم/الحصة.
+  // silent=true تُستخدم في الإرسال الجماعي فلا تعرض تنبيهًا لكل معلم على حدة، وتُعيد حالة الإرسال بدلًا من ذلك.
+  async waSendTemplate(teacher, { date, day, period, className, isoDate }, silent) {
+    if (!waConfigured()) { if (!silent) this.alert('فعّل إعدادات واتساب أولًا من لوحة التحكم.'); return 'not_configured'; }
+    if (!teacher?.phone) { if (!silent) this.alert(`لا يوجد رقم هاتف مسجّل للمعلم «${teacher?.name || ''}». أضفه من قسم «هواتف المعلمين».`); return 'no_phone'; }
+    if (isoDate && this.waAlreadySent(teacher.id, isoDate, period)) {
+      if (!silent) this.alert(`تم إرسال رسالة واتساب لـ «${teacher.name}» لنفس اليوم ونفس الحصة مسبقًا، ولن تُرسَل مرة أخرى.`);
+      return 'already_sent';
+    }
+    const to = this.waFormatPhone(teacher.phone);
+    const params = [teacher.name, date, day, String(period), className || '', db.school?.name || ''];
+    const body = {
+      messaging_product: 'whatsapp',
+      to,
+      type: 'template',
+      template: {
+        name: WA_TEMPLATE_NAME,
+        language: { code: WA_LANG },
+        components: [{ type: 'body', parameters: params.map(p => ({ type: 'text', text: String(p || '') })) }]
+      }
+    };
+    try {
+      const r = await fetch(`https://graph.facebook.com/v19.0/${waGet('waPhoneId')}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${waGet('waToken')}` },
+        body: JSON.stringify(body)
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j?.error?.message || r.status);
+      if (isoDate) this.waMarkSent(teacher.id, isoDate, period);
+      if (!silent) this.alert(`تم إرسال رسالة واتساب إلى ${teacher.name}.`);
+      return 'sent';
+    } catch (err) {
+      if (!silent) this.alert(`تعذّر إرسال رسالة واتساب إلى ${teacher.name}: ${err.message || err}`);
+      return 'error';
+    }
+  },
+
   handleLogoUpload(input) {
     const file = input.files?.[0];
     if (!file) return;
@@ -489,7 +601,7 @@ const App = {
 
   page(x) {
     const routes = { home: 'home', teachers: 'teachers', schedule: 'schedule', absence: 'absence', reports: 'reports' };
-    const titles = { home: 'لوحة التحكم', teachers: 'إدارة المعلمين', schedule: 'الجدول العام للمدرسة', absence: 'تسجيل غياب', reports: 'تقارير الإحصاء والنسب' };
+    const titles = { home: 'لوحة التحكم', teachers: 'إدارة المعلمين', schedule: 'الجدول العام للمدرسة', absence: 'تسجيل الغياب', reports: 'تقارير الإحصاء والنسب' };
     const fn = this[routes[x]];
     if (typeof fn !== 'function') {
       this.alert('تعذر فتح هذه الصفحة.');
@@ -637,7 +749,10 @@ const App = {
             <h3 class="font-extrabold text-xl text-slate-900">${esc(db.school.name)}</h3>
           </div>
         </div>
-        <button onclick="App.openSchoolSettings()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-sm font-semibold">⚙️ تعديل اسم المدرسة والشعار</button>
+        <div class="flex gap-2">
+          <button onclick="App.openWhatsAppSettings()" class="${waConfigured() ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-700'} hover:opacity-80 px-4 py-2.5 rounded-xl text-sm font-semibold">📲 واتساب ${waConfigured() ? '(مفعّل)' : ''}</button>
+          <button onclick="App.openSchoolSettings()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-sm font-semibold">⚙️ تعديل اسم المدرسة والشعار</button>
+        </div>
       </section>
 
       <section class="bg-white rounded-3xl p-6 card-shadow border border-slate-100 mb-6 flex items-center justify-between flex-wrap gap-4">
@@ -783,7 +898,28 @@ const App = {
           </div>
           <div class="flex gap-2">
             <button onclick="App.resetAllCounts()" class="border border-amber-300 text-amber-700 hover:bg-amber-50 px-4 py-3 rounded-2xl font-semibold">↺ تصفير جميع المعلمين</button>
+            <label class="border border-indigo-300 text-indigo-700 hover:bg-indigo-50 px-4 py-3 rounded-2xl font-semibold cursor-pointer">
+              📱 استيراد هواتف المعلمين
+              <input type="file" accept=".xlsx,.xls,.csv" class="hidden" onchange="App.importTeacherPhones(this)">
+            </label>
             <button onclick="App.addT()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-3 rounded-2xl font-semibold">➕ إضافة معلم</button>
+          </div>
+        </div>
+
+        <div class="mb-8 border border-slate-200 rounded-2xl overflow-hidden">
+          <button onclick="App.togglePhonesSection()" class="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 font-bold text-slate-800">
+            <span>📱 هواتف المعلمين (${db.teachers.filter(t => t.phone).length}/${db.teachers.length})</span>
+            <span id="phonesToggleIcon">▾</span>
+          </button>
+          <div id="phonesSection" class="hidden p-4">
+            <p class="text-xs text-slate-500 mb-3">استورد ملف إكسل بعمودين: اسم المعلم ورقم الهاتف، وسيتم ربط كل رقم بالمعلم المطابق تلقائيًا حسب الاسم. يمكن أيضًا تعديل أي رقم يدويًا من الحقل مباشرة.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-80 overflow-y-auto">
+              ${db.teachers.slice().sort((a,b) => a.name.localeCompare(b.name,'ar')).map(t => `
+                <div class="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2">
+                  <span class="flex-1 text-sm font-semibold truncate">${esc(t.name)}</span>
+                  <input dir="ltr" value="${esc(t.phone || '')}" placeholder="97xxxxxxx" onchange="App.setTeacherPhone(${t.id}, this.value)" class="w-36 border border-slate-200 rounded-lg px-2 py-1.5 text-sm outline-none focus:border-indigo-500">
+                </div>`).join('') || '<div class="text-slate-400 text-sm">لا يوجد معلمون بعد.</div>'}
+            </div>
           </div>
         </div>
 
@@ -942,6 +1078,57 @@ const App = {
       save();
       this.page(this._currentPage || 'teachers');
     }, 'تصفير جميع المعلمين');
+  },
+
+  togglePhonesSection() {
+    const box = $('phonesSection'), icon = $('phonesToggleIcon');
+    if (!box) return;
+    const hidden = box.classList.toggle('hidden');
+    if (icon) icon.textContent = hidden ? '▾' : '▴';
+  },
+
+  setTeacherPhone(id, v) {
+    const t = db.teachers.find(t => t.id == id);
+    if (!t) return;
+    t.phone = this.normalize(v).replace(/[^\d+]/g, '');
+    save();
+  },
+
+  // استيراد أرقام هواتف المعلمين من ملف إكسل (عمود اسم + عمود رقم هاتف)، ومطابقتها بالاسم مع المعلمين الحاليين
+  importTeacherPhones(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+        const normName = s => this.normalize(s).replace(/\s+/g, '');
+        const byName = {};
+        db.teachers.forEach(t => { byName[normName(t.name)] = t; });
+
+        let matched = 0, unmatched = [];
+        rows.forEach(row => {
+          const cells = row.map(c => this.normalize(c)).filter(Boolean);
+          if (cells.length < 2) return;
+          // العمود الذي يحوي أرقامًا كثيرة هو الهاتف، والآخر هو الاسم
+          const phoneCell = cells.find(c => (c.match(/\d/g) || []).length >= 6);
+          const nameCell = cells.find(c => c !== phoneCell && !/^\d+$/.test(c));
+          if (!phoneCell || !nameCell) return;
+          const phone = phoneCell.replace(/[^\d+]/g, '');
+          const t = byName[normName(nameCell)];
+          if (t) { t.phone = phone; matched++; } else { unmatched.push(nameCell); }
+        });
+
+        save();
+        this.page(this._currentPage || 'teachers');
+        this.alert(`تم استيراد ${matched} رقم هاتف بنجاح.` + (unmatched.length ? ` تعذّر مطابقة ${unmatched.length} اسم غير موجود في قائمة المعلمين.` : ''));
+      } catch (err) {
+        this.alert('تعذّرت قراءة ملف الهواتف. تأكد أنه يحتوي عمودين: اسم المعلم ورقم الهاتف.');
+      }
+      input.value = '';
+    };
+    reader.readAsArrayBuffer(file);
   },
 
   schedule() {
@@ -1956,8 +2143,10 @@ const App = {
     db.teachers = Array.isArray(db.teachers) ? db.teachers : [];
     db.cnt = db.cnt && typeof db.cnt === 'object' ? db.cnt : {};
     db.free = db.free && typeof db.free === 'object' ? db.free : {};
-    const dr = db.absDraft && db.absDraft.absentIds && db.absDraft.absentIds.length ? db.absDraft : null;
-    const today = dr?.date || localISODate();
+    const deviceToday = localISODate();
+    // التاريخ يتزامن تلقائيًا مع تاريخ الجهاز الفعلي؛ لا تُستعاد مسودة محفوظة بتاريخ غير تاريخ اليوم تلقائيًا
+    const dr = db.absDraft && db.absDraft.absentIds && db.absDraft.absentIds.length && db.absDraft.date === deviceToday ? db.absDraft : null;
+    const today = deviceToday;
     const todayDay = dayNameFromISO(today);
     window.absWeekend = !todayDay;
     const defaultDay = todayDay || 'الأحد';
@@ -1966,7 +2155,7 @@ const App = {
       <section class="bg-white rounded-3xl p-6 md:p-8 card-shadow border border-slate-100 max-w-7xl mx-auto mb-6">
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
           <div>
-            <h3 class="font-bold text-2xl text-slate-900">تسجيل غياب متعدد المعلمين</h3>
+            <h3 class="font-bold text-2xl text-slate-900">تسجيل الغياب (متعدد المعلمين)</h3>
             <p class="text-sm text-slate-500 mt-1">اختر عدة معلمين، ستظهر حصصهم أولًا، ثم اضغط «التوزيع الآلي» لتوزيعها حسب الشروط والعدالة.</p>
           </div>
           <div class="flex flex-wrap gap-2">
@@ -1976,6 +2165,7 @@ const App = {
             <button onclick="App.resetAbsenceDraft()" class="px-4 py-2.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-200">إعادة التوزيع</button>
             <button onclick="App.commitMultiAssignments()" class="px-5 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold">✓ اعتماد التوزيع</button>
             <button onclick="App.printCurrentDraft()" class="px-4 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 font-semibold">🖨️ طباعة كشف الاحتياط</button>
+            ${waConfigured() ? `<button onclick="App.waSendCurrentDraft()" class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">📲 إرسال الرسائل للمعلمين</button>` : ''}
           </div>
         </div>
 
@@ -2054,16 +2244,76 @@ const App = {
       <div class="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
           <b class="text-emerald-900">✅ الغياب المعتمد ليوم ${dmy(iso)} — ${esc(printDayName(list[0].day))} (${Object.keys(groups).length} غائب)</b>
-          <button onclick="App.printReserveForDate('${iso}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-semibold">🖨️ طباعة كشف الاحتياط</button>
+          <div class="flex gap-2">
+            ${waConfigured() ? `<button onclick="App.waSendBulkForDate('${iso}')" class="bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-100 px-3 py-2 rounded-xl text-xs font-semibold">📲 إرسال واتساب للجميع</button>` : ''}
+            <button onclick="App.printReserveForDate('${iso}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-semibold">🖨️ طباعة كشف الاحتياط</button>
+          </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           ${Object.entries(groups).map(([name, rows]) => `
             <div class="bg-white border border-emerald-100 rounded-xl p-3">
               <div class="font-bold text-slate-800 mb-1">${esc(name)}</div>
-              ${rows.sort((a, b) => a.period - b.period).map(r => `<div class="text-xs text-slate-600">الحصة ${r.period} — ${esc(r.subject)}${r.className ? ' (' + esc(r.className) + ')' : ''} ← <b class="text-indigo-700">${esc(r.substitute)}</b></div>`).join('')}
+              ${rows.sort((a, b) => a.period - b.period).map(r => {
+                const subT = db.teachers.find(tt => tt.name === r.substitute);
+                const sentAlready = subT && this.waAlreadySent(subT.id, iso, r.period);
+                return `<div class="flex items-center justify-between gap-2 text-xs text-slate-600 py-0.5">
+                  <span>الحصة ${r.period} — ${esc(r.subject)}${r.className ? ' (' + esc(r.className) + ')' : ''} ← <b class="text-indigo-700">${esc(r.substitute)}</b></span>
+                  ${waConfigured() ? (sentAlready
+                    ? `<span class="text-slate-400 shrink-0">✓ أُرسلت</span>`
+                    : `<button onclick="App.waSendRowRegistered('${iso}', ${JSON.stringify(r.substitute)}, ${r.period}, ${JSON.stringify(r.className || '')})" class="shrink-0 bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-100 px-2 py-0.5 rounded-lg font-semibold">📲</button>`
+                  ) : ''}
+                </div>`;
+              }).join('')}
             </div>`).join('')}
         </div>
       </div>`;
+  },
+
+  // إرسال فردي لصف واحد في مسودة التوزيع الحالية (قبل أو بعد الاعتماد)، مع تحديث العرض بعد الإرسال
+  async waSendRowDraft(teacherId, rowIndex) {
+    const r = (window.currentPreviewItems || [])[rowIndex];
+    const t = db.teachers.find(tt => tt.id == teacherId);
+    if (!r || !t) return;
+    await this.waSendTemplate(t, { date: dmy(r.date), day: r.day, period: r.period, className: r.className, isoDate: r.date });
+    this.renderAbsenceDraft();
+  },
+
+  // يرسل رسالة واتساب لكل معلم بديل مُسنَد حاليًا في مسودة التوزيع (قبل أو بعد الاعتماد)، ويتخطى من سبق إرساله لنفس اليوم/الحصة
+  async waSendCurrentDraft() {
+    const rows = (window.currentPreviewItems || []).filter(r => r.selectedTeacherId);
+    if (!rows.length) { this.alert('لا توجد حصص مُسندة لمعلمين بعد. وزّع الحصص أولًا.'); return; }
+    let sent = 0, already = 0, noPhone = 0, failed = 0;
+    for (const r of rows) {
+      const t = db.teachers.find(tt => tt.id == r.selectedTeacherId);
+      const status = await this.waSendTemplate(t, { date: dmy(r.date), day: r.day, period: r.period, className: r.className, isoDate: r.date }, true);
+      if (status === 'sent') sent++; else if (status === 'already_sent') already++; else if (status === 'no_phone') noPhone++; else if (status === 'error') failed++;
+    }
+    this.renderAbsenceDraft();
+    this.alert(`تم إرسال ${sent} رسالة.` + (already ? ` ${already} أُرسلت مسبقًا فلم تتكرر.` : '') + (noPhone ? ` ${noPhone} بلا رقم هاتف.` : '') + (failed ? ` فشل إرسال ${failed}.` : ''));
+  },
+
+  // يرسل رسالة واتساب لكل بديل اعتُمد لغياب هذا التاريخ، ويتخطى من سبق إرساله لنفس اليوم/الحصة
+  async waSendBulkForDate(iso) {
+    const list = (db.log || []).filter(x => x.date === iso);
+    if (!list.length) return;
+    const dayName = printDayName(list[0].day);
+    let sent = 0, already = 0, noPhone = 0, failed = 0;
+    for (const x of list) {
+      const t = db.teachers.find(tt => tt.name === x.substitute);
+      const status = await this.waSendTemplate(t, { date: dmy(iso), day: dayName, period: x.period, className: x.className, isoDate: iso }, true);
+      if (status === 'sent') sent++; else if (status === 'already_sent') already++; else if (status === 'no_phone') noPhone++; else if (status === 'error') failed++;
+    }
+    this.renderRegisteredAbsences();
+    this.alert(`تم إرسال ${sent} رسالة.` + (already ? ` ${already} أُرسلت مسبقًا فلم تتكرر.` : '') + (noPhone ? ` ${noPhone} بلا رقم هاتف.` : '') + (failed ? ` فشل إرسال ${failed}.` : ''));
+  },
+
+  // إرسال فردي لمعلم واحد من قائمة الغياب المعتمد (بعد الاعتماد)
+  async waSendRowRegistered(iso, substituteName, period, className) {
+    const t = db.teachers.find(tt => tt.name === substituteName);
+    const dayName = printDayName((db.log.find(x => x.date === iso) || {}).day || '');
+    if (!t) return;
+    await this.waSendTemplate(t, { date: dmy(iso), day: dayName, period, className, isoDate: iso });
+    this.renderRegisteredAbsences();
   },
 
   refreshAbsentBadges() {
@@ -2330,7 +2580,13 @@ const App = {
                         <strong class="text-emerald-900">${esc(selectedT.name)}</strong>
                         <span class="bg-white px-2 py-0.5 rounded-full border border-emerald-200 font-bold text-emerald-700 mr-2">${db.cnt[selectedT.id]||0}/${selectedT.quota||3} (${selectedT.quota > 0 ? Math.min(100, Math.round(((db.cnt[selectedT.id]||0)/selectedT.quota)*100)) : 0}%)</span>
                       </div>
-                      <span class="text-emerald-700 font-bold">✓ تم الإسناد</span>
+                      <span class="flex items-center gap-2">
+                        <span class="text-emerald-700 font-bold">✓ تم الإسناد</span>
+                        ${waConfigured() ? (this.waAlreadySent(selectedT.id, r.date, r.period)
+                          ? `<span title="لن تُرسَل رسالة أخرى لنفس اليوم والحصة" class="bg-slate-100 text-slate-500 px-2 py-1 rounded-lg text-[11px] font-semibold">✓ أُرسلت واتساب</span>`
+                          : `<button onclick="App.waSendRowDraft(${selectedT.id}, ${rowIndex})" title="إرسال واتساب للمعلم البديل" class="bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-100 px-2 py-1 rounded-lg text-[11px] font-semibold">📲 واتساب</button>`
+                        ) : ''}
+                      </span>
                     </div>
                   ` : `
                     <div class="mb-1 p-3 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-800 font-medium">
