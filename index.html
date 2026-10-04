@@ -262,6 +262,14 @@ const pad2 = n => String(n).padStart(2, '0');
 const localISODate = (d = new Date()) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const dayNameFromISO = iso => { const [y, m, dd] = String(iso || '').split('-').map(Number); if (!y) return null; const g = new Date(y, m - 1, dd).getDay(); return g <= 4 ? DAYS[g] : null; };
 const dmy = iso => { const [y, m, d] = String(iso || '').split('-'); return y ? `${d}-${m}-${y}` : ''; };
+// يوم الدراسة السابق فعليًا (يتجاوز عطلة الجمعة/السبت: سابق الأحد هو الخميس الماضي)
+const previousSchoolDateISO = iso => {
+  const [y, m, dd] = String(iso || '').split('-').map(Number);
+  if (!y) return null;
+  const idx = DAYS.indexOf(dayNameFromISO(iso));
+  const d = new Date(y, m - 1, dd - (idx === 0 ? 3 : 1));
+  return localISODate(d);
+};
 const printDayName = d => d === 'الاثنين' ? 'الإثنين' : d;
 const PERIOD_ORDINALS = ['الأولى', 'الثانية', 'الثالثة', 'الرابعة', 'الخامسة', 'السادسة', 'السابعة', 'الثامنة'];
 // قواعد الاحتياط
@@ -2475,6 +2483,9 @@ const App = {
       PERIODS.forEach(p => {
         const l = lesson(absid, day, p);
         if (l.sub || l.cl) {
+          // لا تُعاد معالجة حصة سبق اعتمادها لهذا المعلم في هذا التاريخ (لمنع إعادة توزيع معلمين سابقين عند إضافة غياب جديد)
+          const alreadyCommitted = (db.log || []).some(x => x.date === date && x.absent === teacher.name && +x.period === p);
+          if (alreadyCommitted) return;
           const oldRow = old.find(x => x.absentId == absid && x.period == p && x.day == day);
           rows.push({
             absentId: absid,
@@ -2485,6 +2496,7 @@ const App = {
             subject: l.sub || 'اسم المادة',
             className: l.cl || l.cls || '',
             selectedTeacherId: oldRow?.selectedTeacherId || null,
+            selfManaged: oldRow?.selfManaged || false,
             scoredList: [],
             status: oldRow?.selectedTeacherId ? 'تم التوزيع' : 'غير موزعة'
           });
@@ -2506,14 +2518,16 @@ const App = {
     if (!less) return;
 
     const assigned = rows.filter(x => x.selectedTeacherId).length;
-    const unassigned = rows.length - assigned;
+    const selfManagedCount = rows.filter(x => x.selfManaged && !x.selectedTeacherId).length;
+    const unassigned = rows.length - assigned - selfManagedCount;
     const absentCount = new Set(rows.map(x => x.absentId)).size;
 
     $('absenceSummary').innerHTML = `
       <div class="rounded-2xl bg-slate-50 border p-3"><div class="text-xs text-slate-500">المعلمون الغائبون</div><b class="text-xl">${absentCount}</b></div>
       <div class="rounded-2xl bg-slate-50 border p-3"><div class="text-xs text-slate-500">إجمالي الحصص</div><b class="text-xl">${rows.length}</b></div>
       <div class="rounded-2xl bg-emerald-50 border border-emerald-100 p-3"><div class="text-xs text-emerald-700">موزعة</div><b class="text-xl text-emerald-700">${assigned}</b></div>
-      <div class="rounded-2xl bg-amber-50 border border-amber-100 p-3"><div class="text-xs text-amber-700">غير موزعة</div><b class="text-xl text-amber-700">${unassigned}</b></div>`;
+      <div class="rounded-2xl bg-amber-50 border border-amber-100 p-3"><div class="text-xs text-amber-700">غير موزعة</div><b class="text-xl text-amber-700">${unassigned}</b></div>
+      ${selfManagedCount ? `<div class="rounded-2xl bg-indigo-50 border border-indigo-100 p-3"><div class="text-xs text-indigo-700">إدارة ذاتية</div><b class="text-xl text-indigo-700">${selfManagedCount}</b></div>` : ''}`;
 
     if (!rows.length) {
       less.innerHTML = `<div class="border border-dashed rounded-2xl p-10 text-center text-slate-400">اختر معلمًا أو عدة معلمين من القائمة لعرض حصصهم في يوم (${$('day')?.value || 'الأحد'}).</div>`;
@@ -2544,6 +2558,7 @@ const App = {
               )).map(t => this.scoreAbsenceCandidate(t, r, rows))
               .sort((a,b) => {
                 if (a.pct !== b.pct) return a.pct - b.pct;
+                if (a.workedPrevDay !== b.workedPrevDay) return a.workedPrevDay ? 1 : -1;
                 if (a.assigned !== b.assigned) return a.assigned - b.assigned;
                 return String(a.teacher.name).localeCompare(String(b.teacher.name),'ar');
               });
@@ -2561,10 +2576,11 @@ const App = {
                       <label class="text-xs font-bold text-slate-700">المعلم البديل:</label>
                       <select onchange="App.updateAbsencePick(${rowIndex}, this.value)" class="border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white font-bold text-indigo-700 outline-none focus:border-emerald-500">
                         <option value="">-- اختر بديل يدويًا --</option>
+                        <option value="self" ${r.selfManaged ? 'selected' : ''}>🔧 إدارة ذاتية (بدون معلم بديل)</option>
                         ${candidates.map(sc => {
                           const pct = sc.quota > 0 ? Math.min(100, Math.round((sc.assigned / sc.quota) * 100)) : 0;
                           return `
-                            <option value="${sc.teacher.id}" ${sc.teacher.id == r.selectedTeacherId ? 'selected' : ''}>
+                            <option value="${sc.teacher.id}" ${!r.selfManaged && sc.teacher.id == r.selectedTeacherId ? 'selected' : ''}>
                               ${esc(sc.teacher.name)} (${sc.assigned}/${sc.quota} - ${pct}%)
                             </option>
                           `;
@@ -2587,6 +2603,10 @@ const App = {
                           : `<button onclick="App.waSendRowDraft(${selectedT.id}, ${rowIndex})" title="إرسال واتساب للمعلم البديل" class="bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-100 px-2 py-1 rounded-lg text-[11px] font-semibold">📲 واتساب</button>`
                         ) : ''}
                       </span>
+                    </div>
+                  ` : r.selfManaged ? `
+                    <div class="mb-1 p-3 rounded-xl bg-indigo-50 border border-indigo-100 text-xs text-indigo-800 font-medium">
+                      🔧 إدارة ذاتية — ستظهر بهذا الاسم في الاعتماد والطباعة، ومستبعدة من التوزيع الآلي.
                     </div>
                   ` : `
                     <div class="mb-1 p-3 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-800 font-medium">
@@ -2658,6 +2678,9 @@ const App = {
     const assigned = actual + draft;
     const deficit = Math.max(0, quota - assigned);
     const pct = quota > 0 ? assigned / quota : Infinity;
+    // مبدأ: بقدر الإمكان لا يُسنَد نفس المعلم يومين دراسيين متتاليين (أولوية أقل من العدالة في النسبة، تُستخدم كفاصل عند التساوي)
+    const prevSchoolDay = previousSchoolDateISO(row.date);
+    const workedPrevDay = prevSchoolDay ? (db.log || []).some(x => x.date === prevSchoolDay && x.substitute === t.name) : false;
 
     return {
       teacher:t,
@@ -2665,7 +2688,8 @@ const App = {
       quota,
       deficit,
       draft,
-      pct
+      pct,
+      workedPrevDay
     };
   },
 
@@ -2677,6 +2701,7 @@ const App = {
     }
 
     rows.forEach(r => {
+      if (r.selfManaged) return; // الحصص ذات الإدارة الذاتية مستبعدة من التوزيع الآلي ولا تُلمَس
       r.selectedTeacherId = null;
       r.scoredList = [];
       r.status = 'غير موزعة';
@@ -2687,16 +2712,20 @@ const App = {
 
     Object.values(groups).sort((a, b) => a[0].period - b[0].period).forEach(group => {
       const used = new Set();
+      // أي بديل مُختار يدويًا مسبقًا (بما فيها حصص الإدارة الذاتية) يبقى مستبعدًا من بقية الحصص بنفس الحصة لمنع الازدواج
+      group.forEach(r => { if (r.selectedTeacherId) used.add(r.selectedTeacherId); });
 
-      group.sort((a,b) =>
+      const group2 = group.filter(r => !r.selfManaged);
+      group2.sort((a,b) =>
         this.getAbsenceCandidates(a, used).length - this.getAbsenceCandidates(b, used).length
       );
 
-      group.forEach(row => {
+      group2.forEach(row => {
         const candidates = this.getAbsenceCandidates(row, used)
           .map(t => this.scoreAbsenceCandidate(t,row,rows))
           .sort((a,b) => {
             if (a.pct !== b.pct) return a.pct - b.pct;
+            if (a.workedPrevDay !== b.workedPrevDay) return a.workedPrevDay ? 1 : -1;
             if (a.assigned !== b.assigned) return a.assigned - b.assigned;
             return String(a.teacher.name).localeCompare(String(b.teacher.name),'ar');
           });
@@ -2728,11 +2757,22 @@ const App = {
     const row = rows[index];
     if (!teacherId) {
       row.selectedTeacherId = null;
+      row.selfManaged = false;
       row.status = 'غير موزعة';
       this.renderAbsenceDraft();
       this.saveAbsDraft();
       return;
     }
+
+    if (teacherId === 'self') {
+      row.selectedTeacherId = null;
+      row.selfManaged = true;
+      row.status = 'إدارة ذاتية';
+      this.renderAbsenceDraft();
+      this.saveAbsDraft();
+      return;
+    }
+    row.selfManaged = false;
 
     const tid = +teacherId;
     const candidate = this.getAbsenceCandidates(row, new Set(
@@ -2753,7 +2793,7 @@ const App = {
 
   resetAbsenceDraft() {
     const rows = window.currentPreviewItems || [];
-    rows.forEach(r=>{r.selectedTeacherId=null;r.scoredList=[];r.status='غير موزعة';});
+    rows.forEach(r=>{r.selectedTeacherId=null;r.selfManaged=false;r.scoredList=[];r.status='غير موزعة';});
     this.renderAbsenceDraft();
     this.saveAbsDraft();
     if ($('reviewContainer')) $('reviewContainer').innerHTML = '';
@@ -2762,20 +2802,22 @@ const App = {
   commitMultiAssignments() {
     const rows = window.currentPreviewItems || [];
     const assigned = rows.filter(r=>r.selectedTeacherId);
+    const selfManaged = rows.filter(r => r.selfManaged && !r.selectedTeacherId);
+    const committable = assigned.length + selfManaged.length;
 
     if (!rows.length) {
       this.alert('لا توجد حصص غياب.');
       return;
     }
-    if (!assigned.length) {
-      this.alert('اضغط «التوزيع الآلي» أولًا أو حدد المعلمين البدلاء.');
+    if (!committable) {
+      this.alert('اضغط «التوزيع الآلي» أولًا أو حدد المعلمين البدلاء، أو علّم الحصة بـ«إدارة ذاتية».');
       return;
     }
 
-    const unassigned = rows.length - assigned.length;
+    const unassigned = rows.filter(r => !r.selectedTeacherId && !r.selfManaged).length;
     const message = unassigned
-      ? `سيتم اعتماد ${assigned.length} حصة، وستبقى ${unassigned} حصة غير موزعة. هل تريد المتابعة؟`
-      : `سيتم اعتماد جميع الحصص (${assigned.length}) وزيادة عدادات الاحتياط. هل تريد المتابعة؟`;
+      ? `سيتم اعتماد ${committable} حصة، وستبقى ${unassigned} حصة غير موزعة. هل تريد المتابعة؟`
+      : `سيتم اعتماد جميع الحصص (${committable}) وزيادة عدادات الاحتياط. هل تريد المتابعة؟`;
 
     if (!confirm(message)) return;
 
@@ -2794,6 +2836,21 @@ const App = {
         substitute: substitute.name
       });
       db.cnt[substitute.id] = (db.cnt[substitute.id]||0) + 1;
+    });
+
+    // حصص الإدارة الذاتية تُعتمد وتُسجَّل وتظهر في الأرشيف والطباعة، لكن دون معلم بديل حقيقي ودون زيادة أي عداد
+    selfManaged.forEach(row => {
+      const absent = db.teachers.find(t=>t.id==row.absentId);
+      if (!absent) return;
+      db.log.push({
+        date: row.date,
+        day: row.day,
+        absent: absent.name,
+        period: row.period,
+        subject: row.subject,
+        className: row.className,
+        substitute: 'إدارة ذاتية'
+      });
     });
 
     const commitDate = rows[0].date;
