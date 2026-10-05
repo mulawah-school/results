@@ -275,6 +275,7 @@ const PERIOD_ORDINALS = ['الأولى', 'الثانية', 'الثالثة', 'ا
 // قواعد الاحتياط
 const BREAK_AFTER_PERIOD = 4;   // الفسحة بعد الحصة الرابعة
 const MAX_DAILY_LOAD = 5;       // من لديه 5 حصص في اليوم يُستبعد من الاحتياط
+const WEEKLY_LAST_PERIOD_LIMIT = 3; // من لديه 3 حصص (فأكثر) في الحصة الثامنة خلال الأسبوع لا يُعطى الحصة الثامنة احتياطًا
 const MAX_CONSECUTIVE = 2;      // لا تزيد الحصص المتتالية عن حصتين
 const isFreed = (id, d, p) => !!db.free[freeKey(id, d, p)];
 const activeTeachers = () => db.teachers.filter(t => t.active);
@@ -2153,8 +2154,9 @@ const App = {
     db.free = db.free && typeof db.free === 'object' ? db.free : {};
     const deviceToday = localISODate();
     // التاريخ يتزامن تلقائيًا مع تاريخ الجهاز الفعلي؛ لا تُستعاد مسودة محفوظة بتاريخ غير تاريخ اليوم تلقائيًا
-    const dr = db.absDraft && db.absDraft.absentIds && db.absDraft.absentIds.length && db.absDraft.date === deviceToday ? db.absDraft : null;
-    const today = deviceToday;
+    const ad = db.absDraft;
+    const dr = ad && (ad.editing || (ad.absentIds && ad.absentIds.length && ad.date === deviceToday)) ? ad : null;
+    const today = dr?.editing ? dr.date : deviceToday;
     const todayDay = dayNameFromISO(today);
     window.absWeekend = !todayDay;
     const defaultDay = todayDay || 'الأحد';
@@ -2182,7 +2184,7 @@ const App = {
             <div class="grid grid-cols-1 gap-3 mb-4">
               <div>
                 <label class="block text-xs font-bold text-slate-600 mb-1">التاريخ</label>
-                <input id="date" type="date" value="${today}" onchange="App.onAbsenceDateChange()" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">
+                <input id="date" type="date" value="${today}" ${dr?.editing ? 'disabled' : ''} onchange="App.onAbsenceDateChange()" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium">
                 <p id="dateNote" class="text-xs text-rose-600 font-semibold mt-1">${todayDay ? '' : '⚠️ هذا التاريخ عطلة أسبوعية (الجمعة/السبت) — لا توجد حصص.'}</p>
               </div>
               <div>
@@ -2219,7 +2221,7 @@ const App = {
       </section>`;
     window.currentPreviewItems = dr ? Object.entries(dr.picks || {}).map(([k, v]) => {
       const [a, pp] = k.split('|');
-      return { absentId: +a, period: +pp, day: dayNameFromISO(dr.date), selectedTeacherId: +v };
+      return { absentId: +a, period: +pp, day: dayNameFromISO(dr.date), selectedTeacherId: v === 'self' ? null : +v, selfManaged: v === 'self' };
     }) : [];
     this.buildAbsenceDraft(true);
     this.renderRegisteredAbsences();
@@ -2230,10 +2232,12 @@ const App = {
   saveAbsDraft() {
     const rows = window.currentPreviewItems || [];
     const ids = this.getSelectedAbsentIds();
-    const next = ids.length ? {
-      date: $('date')?.value || localISODate(),
+    const editing = db.absDraft?.editing ? { editing: true, backup: db.absDraft.backup } : null;
+    const next = (ids.length || editing) ? {
+      date: editing ? db.absDraft.date : ($('date')?.value || localISODate()),
       absentIds: ids,
-      picks: Object.fromEntries(rows.filter(r => r.selectedTeacherId).map(r => [`${r.absentId}|${r.period}`, r.selectedTeacherId]))
+      picks: Object.fromEntries(rows.filter(r => r.selectedTeacherId || r.selfManaged).map(r => [`${r.absentId}|${r.period}`, r.selfManaged ? 'self' : r.selectedTeacherId])),
+      ...(editing || {})
     } : null;
     if (JSON.stringify(next) === JSON.stringify(db.absDraft || null)) return;
     db.absDraft = next;
@@ -2245,14 +2249,21 @@ const App = {
     if (!box) return;
     const iso = $('date')?.value;
     const list = (db.log || []).filter(x => x.date === iso);
-    if (!list.length) { box.innerHTML = ''; return; }
+    const editingHere = db.absDraft?.editing && db.absDraft.date === iso;
+    const banner = editingHere ? `
+      <div class="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 mb-3 flex flex-wrap items-center justify-between gap-2">
+        <b class="text-indigo-900">✏️ وضع تعديل التوزيع المعتمد ليوم ${dmy(iso)} — عدّل البدلاء ثم اضغط «اعتماد التوزيع».</b>
+        <button onclick="App.cancelEditDistribution()" class="bg-white border border-indigo-300 text-indigo-700 hover:bg-indigo-100 px-3 py-2 rounded-xl text-xs font-semibold">↩ إلغاء التعديل واستعادة المعتمد</button>
+      </div>` : '';
+    if (!list.length) { box.innerHTML = banner; return; }
     const groups = {};
     list.forEach(x => (groups[x.absent] ||= []).push(x));
-    box.innerHTML = `
+    box.innerHTML = banner + `
       <div class="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
           <b class="text-emerald-900">✅ الغياب المعتمد ليوم ${dmy(iso)} — ${esc(printDayName(list[0].day))} (${Object.keys(groups).length} غائب)</b>
           <div class="flex gap-2">
+            <button onclick="App.editCommittedForDate('${iso}')" class="bg-white border border-indigo-300 text-indigo-700 hover:bg-indigo-50 px-3 py-2 rounded-xl text-xs font-semibold">✏️ تعديل التوزيع للجميع</button>
             ${waConfigured() ? `<button onclick="App.waSendBulkForDate('${iso}')" class="bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-100 px-3 py-2 rounded-xl text-xs font-semibold">📲 إرسال واتساب للجميع</button>` : ''}
             <button onclick="App.printReserveForDate('${iso}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-semibold">🖨️ طباعة كشف الاحتياط</button>
           </div>
@@ -2324,10 +2335,66 @@ const App = {
     this.renderRegisteredAbsences();
   },
 
+  // فتح التوزيع المعتمد ليوم معيّن للتعديل: تُسحب الحصص مؤقتًا من الأرشيف وتُحمَّل في المسودة، مع نسخة احتياطية للاستعادة
+  editCommittedForDate(iso) {
+    const entries = (db.log || []).filter(x => x.date === iso);
+    if (!entries.length) return;
+    if (db.absDraft?.editing && db.absDraft.date !== iso) { this.alert('أنهِ أو ألغِ التعديل الجاري أولًا.'); return; }
+    this.confirm('سيُفتح توزيع هذا اليوم للتعديل لجميع المعلمين. يمكنك تغيير أي بديل ثم اعتماد التوزيع من جديد، أو إلغاء التعديل لاستعادة المعتمد كما كان. هل تريد المتابعة؟', () => {
+      const absentIds = [...new Set(entries.map(e => (db.teachers.find(t => t.name === e.absent) || {}).id).filter(Boolean))];
+      const picks = {};
+      entries.forEach(e => {
+        const at = db.teachers.find(t => t.name === e.absent);
+        if (!at) return;
+        if (e.substitute === 'إدارة ذاتية') { picks[`${at.id}|${e.period}`] = 'self'; return; }
+        const st = db.teachers.find(t => t.name === e.substitute);
+        if (st) picks[`${at.id}|${e.period}`] = st.id;
+      });
+      db.absDraft = { date: iso, absentIds, picks, editing: true, backup: entries.map(e => ({ ...e })) };
+      db.log = db.log.filter(x => x.date !== iso);
+      entries.forEach(e => {
+        const st = db.teachers.find(t => t.name === e.substitute);
+        if (st) db.cnt[st.id] = Math.max(0, (db.cnt[st.id] || 0) - 1);
+      });
+      save();
+      this.page('absence');
+    }, 'تعديل التوزيع للجميع');
+  },
+
+  cancelEditDistribution() {
+    const d = db.absDraft;
+    if (!d?.editing) return;
+    this.confirm('سيتم التخلي عن التعديلات واستعادة التوزيع المعتمد كما كان. هل تريد المتابعة؟', () => {
+      (d.backup || []).forEach(e => {
+        db.log.push({ ...e });
+        const st = db.teachers.find(t => t.name === e.substitute);
+        if (st) db.cnt[st.id] = (db.cnt[st.id] || 0) + 1;
+      });
+      db.absDraft = null;
+      save();
+      window.currentPreviewItems = [];
+      this.page('absence');
+    }, 'إلغاء التعديل');
+  },
+
+  editFromArchive() {
+    const iso = $('archiveDate')?.value;
+    if (!iso) { this.alert('لا توجد سجلات لتعديلها.'); return; }
+    this.editCommittedForDate(iso);
+  },
+
   refreshAbsentBadges() {
     const iso = $('date')?.value;
     const names = new Set((db.log || []).filter(x => x.date === iso).map(x => x.absent));
-    document.querySelectorAll('.abs-badge').forEach(b => b.classList.toggle('hidden', !names.has(b.dataset.tname)));
+    let unchecked = false;
+    document.querySelectorAll('.abs-badge').forEach(b => {
+      const reg = names.has(b.dataset.tname);
+      b.classList.toggle('hidden', !reg);
+      // المعلم المسجّل غائبًا ومعتمدًا لا يُعاد تحديده (لتفادي إعادة توزيعه)؛ يُعدَّل عبر «تعديل التوزيع للجميع»
+      const cb = b.closest('label')?.querySelector('.abs-teacher-check');
+      if (cb) { cb.disabled = reg; if (reg && cb.checked) { cb.checked = false; unchecked = true; } }
+    });
+    if (unchecked) this.buildAbsenceDraft(true);
   },
 
   reserveSheetHTML(items, iso, dayName) {
@@ -2661,8 +2728,16 @@ const App = {
   // 1) من لديه 5 حصص في اليوم يُستبعد  2) لا تتكوّن 3 حصص متتالية (الفسحة بعد الحصة 4 تقطع التسلسل)
   reserveRulesOk(t, row) {
     const busy = this.teacherBusyPeriods(t, row);
-    if (busy.size >= MAX_DAILY_LOAD) return false;
     const p = row.period;
+    if (busy.has(p)) return false;                                   // مشغول في هذه الحصة (حصة فعلية أو احتياط معتمد سابقًا)
+    if (busy.size >= MAX_DAILY_LOAD) return false;
+    if (p === PERIODS.length) {
+      const lastPeriodLessons = DAYS.filter(d => {
+        const l = lesson(t.id, d, PERIODS.length);
+        return (l.sub || l.cl) && !isFreed(t.id, d, PERIODS.length);
+      }).length;
+      if (lastPeriodLessons >= WEEKLY_LAST_PERIOD_LIMIT) return false;
+    }
     const lo = p <= BREAK_AFTER_PERIOD ? 1 : BREAK_AFTER_PERIOD + 1;
     const hi = p <= BREAK_AFTER_PERIOD ? BREAK_AFTER_PERIOD : PERIODS.length;
     let run = 1;
@@ -2898,6 +2973,7 @@ const App = {
               <select id="archiveDate" class="border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white font-semibold">
                 ${[...new Set(db.log.map(x => x.date))].filter(Boolean).sort().reverse().map(d => `<option value="${d}">${dmy(d)} — ${printDayName(dayNameFromISO(d) || '')}</option>`).join('') || '<option value="">لا توجد سجلات</option>'}
               </select>
+              <button onclick="App.editFromArchive()" class="bg-white border border-indigo-300 text-indigo-700 hover:bg-indigo-50 px-4 py-2.5 rounded-xl font-semibold text-sm">✏️ تعديل التوزيع</button>
               <button onclick="App.printReserveFromSelect()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-semibold text-sm">🖨️ طباعة كشف الاحتياط</button>
             </div>
             <button onclick="App.clearLog()" class="border border-rose-200 text-rose-600 hover:bg-rose-50 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all flex items-center gap-2">🗑️ مسح الأرشيف وإعادة العدادات</button>
