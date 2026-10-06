@@ -2507,6 +2507,23 @@ const App = {
     this.printReserveForDate(iso);
   },
 
+  // يُستدعى عند تغيّر تاريخ الجهاز (منتصف الليل أو بعد إيقاظ الجهاز): يحدّث تاريخ تسجيل الغياب تلقائيًا
+  onDeviceDateChanged(prev, now) {
+    const inp = $('date');
+    if (!inp || db.absDraft?.editing) return;      // لا نلمس وضع تعديل توزيع معتمد
+    if (inp.value !== prev) return;                // المستخدم اختار تاريخًا آخر يدويًا عمدًا
+    inp.value = now;
+    if (db.absDraft && !db.absDraft.editing) { db.absDraft = null; save(); }   // مسودة اليوم السابق لم تعد صالحة
+    window.currentPreviewItems = [];
+    document.querySelectorAll('.abs-teacher-check:checked').forEach(c => { c.checked = false; });
+    this.onAbsenceDateChange();
+    const note = $('dateNote');
+    if (note && !note.textContent) {
+      note.className = 'text-xs text-emerald-700 font-semibold mt-1';
+      note.textContent = '🔄 تم تحديث التاريخ تلقائيًا مع ساعة الجهاز.';
+    }
+  },
+
   onAbsenceDateChange() {
     const iso = $('date')?.value || '';
     const dn = dayNameFromISO(iso);
@@ -3131,6 +3148,19 @@ const App = {
 
 window.App = App;
 App.page('home');
+
+// تتبّع تغيّر تاريخ الجهاز يوميًا (منتصف الليل) وعند عودة التبويب أو إيقاظ الجهاز
+let lastDeviceDate = localISODate();
+function checkDateRollover() {
+  const now = localISODate();
+  if (now === lastDeviceDate) return;
+  const prev = lastDeviceDate;
+  lastDeviceDate = now;
+  if (App._currentPage === 'absence') App.onDeviceDateChanged(prev, now);
+}
+setInterval(checkDateRollover, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkDateRollover(); });
+window.addEventListener('focus', checkDateRollover);
 if (cloudEndpoint()) {
   setSyncStatus('syncing');
   pullCloud();
