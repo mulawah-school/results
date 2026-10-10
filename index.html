@@ -83,7 +83,7 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
         <span id="syncLabel">💾 حفظ محلي (المزامنة غير مفعلة)</span>
         <span id="syncDot" class="w-2 h-2 rounded-full bg-slate-500 animate-pulse"></span>
       </div>
-      <button onclick="App.openSyncSettings()" class="w-full bg-white/10 hover:bg-white/15 text-white p-2.5 rounded-xl text-xs font-semibold transition-all">☁️ المزامنة الأونلاين</button>
+      <button id="syncSettingsBtn" onclick="App.openSyncSettings()" class="w-full bg-white/10 hover:bg-white/15 text-white p-2.5 rounded-xl text-xs font-semibold transition-all">☁️ المزامنة الأونلاين</button>
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
         <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
         <div dir="ltr">📞 98986817</div>
@@ -98,7 +98,8 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
         <div id="header-ministry" class="text-emerald-600 text-xs font-bold uppercase tracking-wider mb-1">وزارة التربية والتعليم — الاحتياط العام للمدرسة</div>
         <h2 id="title" class="text-2xl md:text-3xl font-extrabold text-slate-900">لوحة التحكم</h2>
       </div>
-      <div id="headerActions" class="flex items-center gap-3 w-full sm:w-auto">
+      <div id="headerActions" class="flex items-center gap-3 w-full sm:w-auto flex-wrap">
+        <div id="quotaBadge" class="hidden flex-1 sm:flex-none text-center px-4 py-2.5 rounded-xl text-sm font-bold border"></div>
         <button id="headerPrintBtn" onclick="App.printLog()" class="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all">🖨️ طباعة</button>
         <button id="headerExcelBtn" onclick="App.excel()" class="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-emerald-600/20 transition-all">📊 تصدير Excel</button>
       </div>
@@ -136,6 +137,18 @@ const waMask = v => v ? ('•'.repeat(Math.max(0, v.length - 4)) + v.slice(-4)) 
 
 const defaultTeachers = [];
 
+// ===== رافد: ربط المدرسة بالخلفية السحابية =====
+// ضع هنا رابط Web App الخاص بخلفية رافد (Code.gs الجديد). إن تُرك فارغًا يعمل البرنامج محليًا كما كان.
+const RAFID_API_URL = 'https://script.google.com/macros/s/AKfycbzgmhNSqLGjoQ1Br9qEgs-NBCtjx5j4U6PvJ1YzdmI9IjiL2BiytImw89GK9Mc7vIgEJg/exec';
+// إن فُتح رابط مدرسة مختلفة على نفس المتصفح تُمسح البيانات المحلية القديمة حتى لا تختلط بين مدرستين.
+(function rafidSwitchGuard() {
+  try {
+    const q = new URLSearchParams((location.hash || '').replace(/^#/, '') || location.search);
+    const c = (q.get('s') || '').trim(), old = localStorage.getItem('schoolSyncCode') || '';
+    if (c && old && c !== old) ['schoolReserveDB', 'waToken', 'waPhoneId', 'rafidInfo'].forEach(k => localStorage.removeItem(k));
+  } catch (e) {}
+})();
+
 let db = JSON.parse(localStorage.getItem('schoolReserveDB') || 'null') || { teachers: defaultTeachers, s: {}, log: [], cnt: {}, free: {}, schoolScheduleMeta: null };
 function normalizeDb() {
   db.teachers = Array.isArray(db.teachers) ? db.teachers : [];
@@ -150,7 +163,6 @@ function normalizeDb() {
     logo: ''
   };
   if (db.school.ministry === 'وزارة التربية والتعليم') db.school.ministry = 'وزارة التعليم';
-  if (db.school.name === 'مدرسة التعليم الأساسي') db.school.name = 'معولة بن شمس للتعليم الأساسي (5-12)';
 
   // تنظيف بقايا أسماء تجريبية/افتراضية قديمة كانت محفوظة في المتصفح من إصدار سابق
   // (أسماء مفردة وهمية لا تُطابق أي معلم حقيقي من ملف الإكسل)
@@ -182,10 +194,10 @@ const FIREBASE_DB_URL_DEFAULT = '';
     const q = new URLSearchParams((location.hash || '').replace(/^#/, '') || location.search);
     const c = q.get('s'), u = q.get('u');
     if (c) localStorage.setItem('schoolSyncCode', c.trim());
-    if (u) localStorage.setItem('schoolSyncUrl', u.trim().replace(/\/+$/, ''));
+    if (u && !RAFID_API_URL) localStorage.setItem('schoolSyncUrl', u.trim().replace(/\/+$/, ''));
   } catch (e) {}
 })();
-const getSyncUrl = () => (localStorage.getItem('schoolSyncUrl') || FIREBASE_DB_URL_DEFAULT || '').trim().replace(/\/+$/, '');
+const getSyncUrl = () => (RAFID_API_URL || localStorage.getItem('schoolSyncUrl') || FIREBASE_DB_URL_DEFAULT || '').trim().replace(/\/+$/, '');
 const getSyncCode = () => (localStorage.getItem('schoolSyncCode') || '').trim();
 const isScriptUrl = u => /^https:\/\/script\.google\.com\//.test(u);
 const cloudEndpoint = () => {
@@ -249,6 +261,96 @@ async function pullCloud() {
     } else setSyncStatus('ok');
   } catch (e) { setSyncStatus('error'); }
   finally { syncBusy = false; }
+}
+
+// ===== رافد: بوابة الرابط + رصيد الرسائل (الخصم من الخادم) =====
+const rafidMode = () => !!(RAFID_API_URL && isScriptUrl(RAFID_API_URL));
+let rafidInfo = null;
+try { rafidInfo = JSON.parse(localStorage.getItem('rafidInfo') || 'null'); } catch (e) {}
+function renderQuota() {
+  const b = document.getElementById('quotaBadge');
+  if (!b) return;
+  if (!rafidMode() || !rafidInfo) { b.classList.add('hidden'); return; }
+  const unl = rafidInfo.unlimited || Number(rafidInfo.messageLimit || 0) === 0;
+  const rem = unl ? null : Math.max(0, Number(rafidInfo.remaining ?? (rafidInfo.messageLimit - rafidInfo.messagesUsed)));
+  let cls = 'bg-emerald-50 text-emerald-700 border-emerald-200', txt = '💬 الرسائل: غير محدودة';
+  if (!unl) {
+    txt = `💬 الرسائل المتبقية: ${rem}`;
+    if (rem === 0) cls = 'bg-rose-50 text-rose-700 border-rose-200';
+    else if (rem <= 20) cls = 'bg-amber-50 text-amber-700 border-amber-200';
+  }
+  b.className = `flex-1 sm:flex-none text-center px-4 py-2.5 rounded-xl text-sm font-bold border ${cls}`;
+  b.textContent = txt;
+}
+function rafidSetInfo(j) {
+  rafidInfo = j;
+  try { localStorage.setItem('rafidInfo', JSON.stringify(j)); } catch (e) {}
+  renderQuota();
+}
+function rafidGate(reason) {
+  const msgs = {
+    no_link: 'افتح البرنامج من الرابط الخاص بمدرستك الذي زوّدك به مسؤول رافد.',
+    not_found: 'هذا الرابط غير صالح أو تم إلغاؤه. تواصل مع مسؤول رافد.',
+    disabled: 'تم تعطيل رابط مدرستك. تواصل مع مسؤول رافد لإعادة التفعيل.',
+    offline: 'تعذر الاتصال بالخادم للتحقق من الرابط. تحقق من الإنترنت ثم أعد المحاولة.'
+  };
+  let g = document.getElementById('rafidGate');
+  if (!g) {
+    g = document.createElement('div');
+    g.id = 'rafidGate';
+    g.className = 'fixed inset-0 z-[100] bg-slate-900/95 flex items-center justify-center p-6';
+    document.body.appendChild(g);
+  }
+  g.innerHTML = `<div class="bg-white rounded-3xl p-8 max-w-md w-full text-center card-shadow">
+    <div class="text-5xl mb-3">🔒</div><h3 class="text-xl font-extrabold text-slate-900 mb-2">لا يمكن فتح البرنامج</h3>
+    <p class="text-slate-600 leading-relaxed mb-5">${esc(msgs[reason] || msgs.not_found)}</p>
+    ${reason === 'offline' ? '<button onclick="rafidCheck()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-semibold">إعادة المحاولة</button>' : ''}</div>`;
+}
+function rafidUngate() { const g = document.getElementById('rafidGate'); if (g) g.remove(); }
+let rafidGated = false;
+// يتحقق من الرابط وحالته ورصيده؛ يُعيد true إذا كان مسموحًا بالعمل
+async function rafidCheck() {
+  if (!rafidMode()) return true;
+  const code = getSyncCode();
+  if (!code) { rafidGate('no_link'); return false; }
+  try {
+    const r = await fetch(`${RAFID_API_URL}?action=school&s=${encodeURIComponent(code)}&_=${Date.now()}`, { cache: 'no-store' });
+    const j = await r.json();
+    if (!j.ok) { rafidGate(j.error || 'not_found'); return false; }
+    rafidSetInfo(j);
+    if (!j.active) { rafidGate('disabled'); return false; }
+    // اسم المدرسة من لوحة المالك إذا لم يحدد المستخدم اسمًا بنفسه
+    if (j.name && (!db.school.name || db.school.name === 'مدرسة التعليم الأساسي')) {
+      db.school.name = j.name; localStorage.setItem('schoolReserveDB', JSON.stringify(db));
+      if ($('header-ministry')) $('header-ministry').textContent = `${db.school.ministry} — ${db.school.name}`;
+    }
+    rafidUngate();
+    return true;
+  } catch (e) {
+    if (rafidInfo && rafidInfo.active) { renderQuota(); return true; }   // انقطاع مؤقت: نكمل بآخر حالة معروفة
+    rafidGate('offline'); return false;
+  }
+}
+// حجز رسالة واحدة من الرصيد قبل الإرسال
+async function rafidConsume() {
+  try {
+    const r = await fetch(RAFID_API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'consume', s: getSyncCode(), n: 1 }) });
+    const j = await r.json();
+    if (j.ok) { rafidSetInfo(j); return { ok: true }; }
+    if (j.messageLimit !== undefined) rafidSetInfo({ ...j, ok: true });
+    if (j.error === 'disabled') rafidGate('disabled');
+    return { ok: false, error: j.error || 'error' };
+  } catch (e) { return { ok: false, error: 'network' }; }
+}
+// إرجاع الرسالة المحجوزة إذا فشل الإرسال فعليًا
+async function rafidRefund() {
+  try {
+    const r = await fetch(RAFID_API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'refund', s: getSyncCode(), n: 1 }) });
+    const j = await r.json();
+    if (j.ok) rafidSetInfo(j);
+  } catch (e) {}
 }
 const save = () => {
   db.updatedAt = Date.now();
@@ -543,6 +645,16 @@ const App = {
       if (!silent) this.alert(`تم إرسال رسالة واتساب لـ «${teacher.name}» لنفس اليوم ونفس الحصة مسبقًا، ولن تُرسَل مرة أخرى.`);
       return 'already_sent';
     }
+    let reserved = false;
+    if (rafidMode()) {
+      const q = await rafidConsume();
+      if (!q.ok) {
+        if (!silent) this.alert(q.error === 'quota' ? 'انتهى رصيد الرسائل لمدرستك. تواصل مع مسؤول رافد لإضافة رصيد.'
+          : q.error === 'disabled' ? 'تم تعطيل رابط مدرستك.' : 'تعذر الاتصال بخادم الرصيد، لم تُرسل الرسالة. حاول مجددًا.');
+        return q.error === 'quota' ? 'no_quota' : (q.error === 'disabled' ? 'no_quota' : 'error');
+      }
+      reserved = true;
+    }
     const to = this.waFormatPhone(teacher.phone);
     const params = [teacher.name, date, day, String(period), className || '', db.school?.name || ''];
     const body = {
@@ -567,6 +679,7 @@ const App = {
       if (!silent) this.alert(`تم إرسال رسالة واتساب إلى ${teacher.name}.`);
       return 'sent';
     } catch (err) {
+      if (reserved) rafidRefund();
       if (!silent) this.alert(`تعذّر إرسال رسالة واتساب إلى ${teacher.name}: ${err.message || err}`);
       return 'error';
     }
@@ -2301,14 +2414,14 @@ const App = {
   async waSendCurrentDraft() {
     const rows = (window.currentPreviewItems || []).filter(r => r.selectedTeacherId);
     if (!rows.length) { this.alert('لا توجد حصص مُسندة لمعلمين بعد. وزّع الحصص أولًا.'); return; }
-    let sent = 0, already = 0, noPhone = 0, failed = 0;
+    let sent = 0, already = 0, noPhone = 0, failed = 0, noQuota = false;
     for (const r of rows) {
       const t = db.teachers.find(tt => tt.id == r.selectedTeacherId);
       const status = await this.waSendTemplate(t, { date: dmy(r.date), day: r.day, period: r.period, className: r.className, isoDate: r.date }, true);
-      if (status === 'sent') sent++; else if (status === 'already_sent') already++; else if (status === 'no_phone') noPhone++; else if (status === 'error') failed++;
+      if (status === 'sent') sent++; else if (status === 'already_sent') already++; else if (status === 'no_phone') noPhone++; else if (status === 'error') failed++; else if (status === 'no_quota') { noQuota = true; break; }
     }
     this.renderAbsenceDraft();
-    this.alert(`تم إرسال ${sent} رسالة.` + (already ? ` ${already} أُرسلت مسبقًا فلم تتكرر.` : '') + (noPhone ? ` ${noPhone} بلا رقم هاتف.` : '') + (failed ? ` فشل إرسال ${failed}.` : ''));
+    this.alert(`تم إرسال ${sent} رسالة.` + (already ? ` ${already} أُرسلت مسبقًا فلم تتكرر.` : '') + (noPhone ? ` ${noPhone} بلا رقم هاتف.` : '') + (failed ? ` فشل إرسال ${failed}.` : '') + (noQuota ? ' ⛔ توقف الإرسال لانتهاء رصيد الرسائل (أو تعطيل الرابط). تواصل مع مسؤول رافد.' : ''));
   },
 
   // يرسل رسالة واتساب لكل بديل اعتُمد لغياب هذا التاريخ، ويتخطى من سبق إرساله لنفس اليوم/الحصة
@@ -2316,14 +2429,14 @@ const App = {
     const list = (db.log || []).filter(x => x.date === iso);
     if (!list.length) return;
     const dayName = printDayName(list[0].day);
-    let sent = 0, already = 0, noPhone = 0, failed = 0;
+    let sent = 0, already = 0, noPhone = 0, failed = 0, noQuota = false;
     for (const x of list) {
       const t = db.teachers.find(tt => tt.name === x.substitute);
       const status = await this.waSendTemplate(t, { date: dmy(iso), day: dayName, period: x.period, className: x.className, isoDate: iso }, true);
-      if (status === 'sent') sent++; else if (status === 'already_sent') already++; else if (status === 'no_phone') noPhone++; else if (status === 'error') failed++;
+      if (status === 'sent') sent++; else if (status === 'already_sent') already++; else if (status === 'no_phone') noPhone++; else if (status === 'error') failed++; else if (status === 'no_quota') { noQuota = true; break; }
     }
     this.renderRegisteredAbsences();
-    this.alert(`تم إرسال ${sent} رسالة.` + (already ? ` ${already} أُرسلت مسبقًا فلم تتكرر.` : '') + (noPhone ? ` ${noPhone} بلا رقم هاتف.` : '') + (failed ? ` فشل إرسال ${failed}.` : ''));
+    this.alert(`تم إرسال ${sent} رسالة.` + (already ? ` ${already} أُرسلت مسبقًا فلم تتكرر.` : '') + (noPhone ? ` ${noPhone} بلا رقم هاتف.` : '') + (failed ? ` فشل إرسال ${failed}.` : '') + (noQuota ? ' ⛔ توقف الإرسال لانتهاء رصيد الرسائل (أو تعطيل الرابط). تواصل مع مسؤول رافد.' : ''));
   },
 
   // إرسال فردي لمعلم واحد من قائمة الغياب المعتمد (بعد الاعتماد)
@@ -3161,7 +3274,13 @@ function checkDateRollover() {
 setInterval(checkDateRollover, 30000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) checkDateRollover(); });
 window.addEventListener('focus', checkDateRollover);
-if (cloudEndpoint()) {
+if (rafidMode()) {
+  const sb = document.getElementById('syncSettingsBtn'); if (sb) sb.classList.add('hidden');
+  renderQuota();
+  rafidCheck().then(ok => { if (ok && cloudEndpoint()) { setSyncStatus('syncing'); pullCloud(); } else if (!cloudEndpoint()) setSyncStatus('local'); });
+  setInterval(async () => { if (await rafidCheck()) pullCloud(); }, 20000);
+  document.addEventListener('visibilitychange', async () => { if (!document.hidden && await rafidCheck()) pullCloud(); });
+} else if (cloudEndpoint()) {
   setSyncStatus('syncing');
   pullCloud();
   setInterval(pullCloud, 20000);
