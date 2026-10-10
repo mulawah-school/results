@@ -375,12 +375,27 @@ const previousSchoolDateISO = iso => {
   const d = new Date(y, m - 1, dd - (idx === 0 ? 3 : 1));
   return localISODate(d);
 };
+// يوم الدراسة التالي فعليًا (تالي الخميس هو الأحد التالي)
+const nextSchoolDateISO = iso => {
+  const [y, m, dd] = String(iso || '').split('-').map(Number);
+  if (!y) return null;
+  const idx = DAYS.indexOf(dayNameFromISO(iso));
+  return localISODate(new Date(y, m - 1, dd + (idx === DAYS.length - 1 ? 3 : 1)));
+};
+// بداية الأسبوع الدراسي (الأحد) لتاريخ معيّن، لاحتساب الحدود الأسبوعية
+const weekStartISO = iso => {
+  const [y, m, dd] = String(iso || '').split('-').map(Number);
+  if (!y) return '';
+  const g = new Date(y, m - 1, dd).getDay();   // الأحد = 0 ... السبت = 6
+  return localISODate(new Date(y, m - 1, dd - (g === 6 ? 6 : g)));
+};
 const printDayName = d => d === 'الاثنين' ? 'الإثنين' : d;
 const PERIOD_ORDINALS = ['الأولى', 'الثانية', 'الثالثة', 'الرابعة', 'الخامسة', 'السادسة', 'السابعة', 'الثامنة'];
 // قواعد الاحتياط
 const BREAK_AFTER_PERIOD = 4;   // الفسحة بعد الحصة الرابعة
 const MAX_DAILY_LOAD = 5;       // من لديه 5 حصص في اليوم يُستبعد من الاحتياط
 const WEEKLY_LAST_PERIOD_LIMIT = 3; // من لديه 3 حصص (فأكثر) في الحصة الثامنة خلال الأسبوع لا يُعطى الحصة الثامنة احتياطًا
+const WEEKLY_RESERVE_LAST_PERIOD_MAX = 1; // لا يُسنَد للمعلم احتياط في الحصة الثامنة أكثر من مرة واحدة في الأسبوع
 const MAX_CONSECUTIVE = 2;      // لا تزيد الحصص المتتالية عن حصتين
 const isFreed = (id, d, p) => !!db.free[freeKey(id, d, p)];
 const activeTeachers = () => db.teachers.filter(t => t.active);
@@ -2781,7 +2796,7 @@ const App = {
                           const pct = sc.quota > 0 ? Math.min(100, Math.round((sc.assigned / sc.quota) * 100)) : 0;
                           return `
                             <option value="${sc.teacher.id}" ${!r.selfManaged && sc.teacher.id == r.selectedTeacherId ? 'selected' : ''}>
-                              ${esc(sc.teacher.name)} (${sc.assigned}/${sc.quota} - ${pct}%)
+                              ${esc(sc.teacher.name)} (${sc.assigned}/${sc.quota} - ${pct}%)${sc.workedPrevDay ? ' ⚠ يوم متتالٍ' : ''}
                             </option>
                           `;
                         }).join('')}
@@ -2870,6 +2885,11 @@ const App = {
         return (l.sub || l.cl) && !isFreed(t.id, d, PERIODS.length);
       }).length;
       if (lastPeriodLessons >= WEEKLY_LAST_PERIOD_LIMIT) return false;
+      // لا يأخذ المعلم حصتي احتياط في الحصة الثامنة خلال نفس الأسبوع (المعتمد سابقًا + المسودة الحالية)
+      const wk = weekStartISO(row.date);
+      let reserves8 = (db.log || []).filter(x => x.substitute === t.name && +x.period === PERIODS.length && weekStartISO(x.date) === wk).length;
+      reserves8 += (window.currentPreviewItems || []).filter(x => x !== row && x.selectedTeacherId == t.id && +x.period === PERIODS.length && weekStartISO(x.date) === wk).length;
+      if (reserves8 >= WEEKLY_RESERVE_LAST_PERIOD_MAX) return false;
     }
     const lo = p <= BREAK_AFTER_PERIOD ? 1 : BREAK_AFTER_PERIOD + 1;
     const hi = p <= BREAK_AFTER_PERIOD ? BREAK_AFTER_PERIOD : PERIODS.length;
@@ -2886,9 +2906,10 @@ const App = {
     const assigned = actual + draft;
     const deficit = Math.max(0, quota - assigned);
     const pct = quota > 0 ? assigned / quota : Infinity;
-    // مبدأ: بقدر الإمكان لا يُسنَد نفس المعلم يومين دراسيين متتاليين (أولوية أقل من العدالة في النسبة، تُستخدم كفاصل عند التساوي)
-    const prevSchoolDay = previousSchoolDateISO(row.date);
-    const workedPrevDay = prevSchoolDay ? (db.log || []).some(x => x.date === prevSchoolDay && x.substitute === t.name) : false;
+    // الشرط 1: العدالة (أقل نسبة إشغال أولًا).  الشرط 2: عدم التتالي — لا يُفضَّل من أخذ احتياطًا في يوم الدراسة السابق أو التالي،
+    // ويُطبَّق كفاصل عند تساوي العدالة بين المرشحين.
+    const prevSchoolDay = previousSchoolDateISO(row.date), nextSchoolDay = nextSchoolDateISO(row.date);
+    const workedPrevDay = (db.log || []).some(x => x.substitute === t.name && (x.date === prevSchoolDay || x.date === nextSchoolDay));
 
     return {
       teacher:t,
