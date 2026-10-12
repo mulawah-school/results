@@ -148,7 +148,7 @@ const RAFID_API_URL = 'https://script.google.com/macros/s/AKfycbzgmhNSqLGjoQ1Br9
   try {
     const q = new URLSearchParams((location.hash || '').replace(/^#/, '') || location.search);
     const c = (q.get('s') || '').trim(), old = localStorage.getItem('schoolSyncCode') || '';
-    if (c && old && c !== old) ['schoolReserveDB', 'waToken', 'waPhoneId', 'rafidInfo'].forEach(k => localStorage.removeItem(k));
+    if (c && old && c !== old) ['schoolReserveDB', 'waToken', 'waPhoneId', 'rafidInfo', 'schoolSyncRev', 'schoolSyncDirty', 'schoolReserveDB_backup'].forEach(k => localStorage.removeItem(k));
   } catch (e) {}
 })();
 
@@ -220,37 +220,108 @@ function setSyncStatus(kind) {
   if (l) l.textContent = txt;
   if (d) d.className = 'w-2 h-2 rounded-full animate-pulse ' + cls;
 }
-let syncTimer = null, syncBusy = false;
-async function pushCloud() {
+let syncTimer = null, syncBusy = false, pushBusy = false, pushAgain = false, syncReady = false;
+const getRev = () => { const v = localStorage.getItem('schoolSyncRev'); return v === null || v === '' ? null : Number(v); };
+const setRev = r => { try { localStorage.setItem('schoolSyncRev', String(r)); } catch (e) {} };
+const isDirty = () => localStorage.getItem('schoolSyncDirty') === '1';
+const setDirty = v => { try { v ? localStorage.setItem('schoolSyncDirty', '1') : localStorage.removeItem('schoolSyncDirty'); } catch (e) {} };
+
+// دمج نسخة السحابة مع النسخة المحلية دون فقدان أي اعتماد: الأرشيف يُجمَع من الطرفين (المحلي يغلب عند التعارض)،
+// والعدادات تُحسب بالفرق، والمعلمون وسجل الواتساب يُجمَعان. بقية البيانات (الجدول والإعدادات) من النسخة المحلية.
+function mergeDbs(local, remote) {
+  const out = JSON.parse(JSON.stringify(local));
+  const rk = x => `${x.date}|${x.period}|${x.absent}`;
+  const have = new Set((out.log || []).map(rk));
+  (remote.log || []).forEach(x => {
+    if (have.has(rk(x))) return;
+    out.log.push(x); have.add(rk(x));
+    const t = (out.teachers || []).find(tt => tt.name === x.substitute);
+    if (t) out.cnt[t.id] = (out.cnt[t.id] || 0) + 1;
+  });
+  const ids = new Set((out.teachers || []).map(t => String(t.id)));
+  (remote.teachers || []).forEach(t => {
+    if (ids.has(String(t.id))) return;
+    out.teachers.push(t); out.cnt[t.id] = Math.max(out.cnt[t.id] || 0, (remote.cnt || {})[t.id] || 0);
+  });
+  out.waSentLog = Object.assign({}, remote.waSentLog || {}, out.waSentLog || {});
+  if (!(out.teachers || []).length && (remote.teachers || []).length) return JSON.parse(JSON.stringify(remote));
+  return out;
+}
+function backupLocalDb(tag) { try { localStorage.setItem('schoolReserveDB_backup', JSON.stringify({ tag, at: Date.now(), db })); } catch (e) {} }
+function adoptRemote(remote, merge) {
+  const rdb = JSON.parse(remote.data);
+  backupLocalDb(merge ? 'before-merge' : 'before-replace');
+  db = merge ? mergeDbs(db, rdb) : rdb;
+  normalizeDb();
+  db.updatedAt = merge ? Date.now() : (remote.updatedAt || Date.now());
+  localStorage.setItem('schoolReserveDB', JSON.stringify(db));
+  if (Number.isFinite(Number(remote.rev))) setRev(remote.rev);
+  const busy = !document.getElementById('modal').classList.contains('hidden') ||
+               /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
+  if (!busy && window.App) App.page(App._currentPage || 'home');
+}
+async function pushCloud(attempt = 0) {
   const url = cloudEndpoint();
   if (!url) { setSyncStatus('local'); return; }
-  setSyncStatus('syncing');
+  if (isScriptUrl(url) && !syncReady) return;          // لا نرفع قبل أول قراءة ناجحة من السحابة (يمنع كتابة نسخة فارغة/قديمة فوق الأرشيف)
+  if (pushBusy) { pushAgain = true; return; }
+  pushBusy = true; setSyncStatus('syncing');
   try {
+    const sentAt = db.updatedAt || Date.now();
     // نخزن قاعدة البيانات كنص JSON واحد لأن مفاتيح Firebase لا تقبل النقطة وبعض الرموز
-    const payload = { updatedAt: db.updatedAt || Date.now(), data: JSON.stringify(db) };
+    const payload = { updatedAt: sentAt, data: JSON.stringify(db) };
     if (isScriptUrl(url)) {
       // Google Apps Script: طلب بسيط (text/plain) لتجنب مشكلة CORS
       const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ code: getSyncCode(), ...payload }) });
+        body: JSON.stringify({ code: getSyncCode(), ...payload, baseRev: getRev() ?? 0 }) });
       const j = await r.json();
+      if (j.conflict) {                                 // سبقنا جهاز آخر بتعديل: ندمج ثم نعيد الرفع
+        if (attempt >= 3) throw new Error('conflict');
+        adoptRemote({ data: j.data, rev: j.rev, updatedAt: j.updatedAt }, true);
+        pushBusy = false; return pushCloud(attempt + 1);
+      }
       if (!j.ok) throw new Error(j.error || 'denied');
+      if (Number.isFinite(Number(j.rev))) setRev(j.rev);
+      if ((db.updatedAt || 0) === sentAt) setDirty(false);
     } else {
       const r = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!r.ok) throw new Error(r.status);
     }
     setSyncStatus('ok');
   } catch (e) { setSyncStatus('error'); }
+  finally {
+    pushBusy = false;
+    if (pushAgain) { pushAgain = false; setTimeout(pushCloud, 300); }
+  }
 }
 async function pullCloud() {
   const url = cloudEndpoint();
   if (!url || syncBusy) return;
   syncBusy = true;
   try {
-    const r = await fetch(isScriptUrl(url) ? `${url}?code=${encodeURIComponent(getSyncCode())}` : url, { cache: 'no-store' });
+    const r = await fetch(isScriptUrl(url) ? `${url}?code=${encodeURIComponent(getSyncCode())}&_=${Date.now()}` : url, { cache: 'no-store' });
     if (!r.ok) throw new Error(r.status);
     const remote = await r.json();
     if (remote && remote.error) throw new Error(remote.error);
-    if (!remote || !remote.data) { await pushCloud(); return; }   // أول مرة: ارفع النسخة المحلية
+    const hasLocal = (db.teachers || []).length || (db.log || []).length;
+    if (!remote || !remote.data) { syncReady = true; if (hasLocal || isDirty()) await pushCloud(); else setSyncStatus('ok'); return; }   // أول مرة: ارفع النسخة المحلية
+
+    if (isScriptUrl(url) && remote.rev !== undefined) {
+      // نظام الإصدارات: الخادم يرقّم كل حفظ، فلا يتأثر بفرق ساعة الأجهزة
+      const myRev = getRev(), rrev = Number(remote.rev) || 0;
+      syncReady = true;
+      if (myRev === null) {                              // أول اتصال لهذا الجهاز
+        if (hasLocal) { adoptRemote(remote, true); setDirty(true); await pushCloud(); }
+        else { adoptRemote(remote, false); setDirty(false); }
+      } else if (rrev > myRev) {
+        if (isDirty()) { adoptRemote(remote, true); setDirty(true); await pushCloud(); }
+        else adoptRemote(remote, false);
+      } else if (isDirty()) await pushCloud();
+      setSyncStatus('ok');
+      return;
+    }
+    // خادم قديم بلا إصدارات / Firebase: المقارنة بالوقت كما كان
+    syncReady = true;
     if ((remote.updatedAt || 0) > (db.updatedAt || 0)) {
       db = JSON.parse(remote.data);
       normalizeDb();
@@ -358,6 +429,7 @@ async function rafidRefund() {
 const save = () => {
   db.updatedAt = Date.now();
   localStorage.setItem('schoolReserveDB', JSON.stringify(db));
+  setDirty(true);
   if (cloudEndpoint()) { clearTimeout(syncTimer); syncTimer = setTimeout(pushCloud, 1000); }
 };
 const key = (id, d, p) => id + '|' + d + '|' + p;
@@ -555,6 +627,7 @@ const App = {
     if (!/^https:\/\/.+/.test(u) || c.length < 6) { this.alert('أدخل رابط قاعدة البيانات كاملًا ورمزًا من 6 أحرف على الأقل.'); return; }
     localStorage.setItem('schoolSyncUrl', u);
     localStorage.setItem('schoolSyncCode', c);
+    localStorage.removeItem('schoolSyncRev');
     this.closeM();
     await pullCloud();
   },
@@ -831,6 +904,7 @@ const App = {
                       <span class="text-[10px] text-slate-500">${teacherLessons(t.id).length} فعلي</span>
                       <span class="text-emerald-700 font-bold">احتياط: ${db.cnt[t.id] || 0}</span>
                       <span class="text-slate-400">/ ${t.quota ?? 0}</span>
+                      <span class="font-bold text-indigo-600">(${(t.quota || 0) > 0 ? Math.min(100, Math.round(((db.cnt[t.id] || 0) / t.quota) * 100)) : 0}%)</span>
                     </div>
                   </td>
                   ${DAYS.map(d => PERIODS.map(p => {
@@ -2772,8 +2846,8 @@ const App = {
                 rows.filter((x,i)=>i!==rowIndex && x.day===r.day && x.period===r.period && x.selectedTeacherId).map(x=>x.selectedTeacherId)
               )).map(t => this.scoreAbsenceCandidate(t, r, rows))
               .sort((a,b) => {
-                if (a.pct !== b.pct) return a.pct - b.pct;
                 if (a.workedPrevDay !== b.workedPrevDay) return a.workedPrevDay ? 1 : -1;
+                if (a.pct !== b.pct) return a.pct - b.pct;
                 if (a.assigned !== b.assigned) return a.assigned - b.assigned;
                 return String(a.teacher.name).localeCompare(String(b.teacher.name),'ar');
               });
@@ -2891,8 +2965,8 @@ const App = {
       reserves8 += (window.currentPreviewItems || []).filter(x => x !== row && x.selectedTeacherId == t.id && +x.period === PERIODS.length && weekStartISO(x.date) === wk).length;
       if (reserves8 >= WEEKLY_RESERVE_LAST_PERIOD_MAX) return false;
     }
-    const lo = p <= BREAK_AFTER_PERIOD ? 1 : BREAK_AFTER_PERIOD + 1;
-    const hi = p <= BREAK_AFTER_PERIOD ? BREAK_AFTER_PERIOD : PERIODS.length;
+    // الحصتان الرابعة والخامسة تُعدّان متتاليتين (الفسحة لا تقطع التسلسل) فيسري الحد على كل الحصص
+    const lo = 1, hi = PERIODS.length;
     let run = 1;
     for (let q = p - 1; q >= lo && busy.has(q); q--) run++;
     for (let q = p + 1; q <= hi && busy.has(q); q++) run++;
@@ -2906,8 +2980,8 @@ const App = {
     const assigned = actual + draft;
     const deficit = Math.max(0, quota - assigned);
     const pct = quota > 0 ? assigned / quota : Infinity;
-    // الشرط 1: العدالة (أقل نسبة إشغال أولًا).  الشرط 2: عدم التتالي — لا يُفضَّل من أخذ احتياطًا في يوم الدراسة السابق أو التالي،
-    // ويُطبَّق كفاصل عند تساوي العدالة بين المرشحين.
+    // الشرط 1: عدم التتالي — يُقدَّم من لم يأخذ احتياطًا في يوم الدراسة السابق أو التالي.
+    // الشرط 2: العدالة — بين من تتساوى فيهم الحالة يُقدَّم الأقل نسبة إشغال.
     const prevSchoolDay = previousSchoolDateISO(row.date), nextSchoolDay = nextSchoolDateISO(row.date);
     const workedPrevDay = (db.log || []).some(x => x.substitute === t.name && (x.date === prevSchoolDay || x.date === nextSchoolDay));
 
@@ -2953,8 +3027,8 @@ const App = {
         const candidates = this.getAbsenceCandidates(row, used)
           .map(t => this.scoreAbsenceCandidate(t,row,rows))
           .sort((a,b) => {
-            if (a.pct !== b.pct) return a.pct - b.pct;
             if (a.workedPrevDay !== b.workedPrevDay) return a.workedPrevDay ? 1 : -1;
+            if (a.pct !== b.pct) return a.pct - b.pct;
             if (a.assigned !== b.assigned) return a.assigned - b.assigned;
             return String(a.teacher.name).localeCompare(String(b.teacher.name),'ar');
           });
