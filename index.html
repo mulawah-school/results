@@ -2476,7 +2476,10 @@ const App = {
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           ${Object.entries(groups).map(([name, rows]) => `
             <div class="bg-white border border-emerald-100 rounded-xl p-3">
-              <div class="font-bold text-slate-800 mb-1">${esc(name)}</div>
+              <div class="flex items-center justify-between gap-2 mb-1">
+                <div class="font-bold text-slate-800">${esc(name)}</div>
+                <button onclick="App.deleteAbsent('${iso}', ${esc(JSON.stringify(name))})" title="حذف هذا الغائب من الاعتماد" class="shrink-0 text-xs bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 px-2 py-0.5 rounded-lg font-semibold">🗑️ حذف</button>
+              </div>
               ${rows.sort((a, b) => a.period - b.period).map(r => {
                 const subT = db.teachers.find(tt => tt.name === r.substitute);
                 const sentAlready = subT && this.waAlreadySent(subT.id, iso, r.period);
@@ -2484,7 +2487,7 @@ const App = {
                   <span>الحصة ${r.period} — ${esc(r.subject)}${r.className ? ' (' + esc(r.className) + ')' : ''} ← <b class="text-indigo-700">${esc(r.substitute)}</b></span>
                   ${waConfigured() ? (sentAlready
                     ? `<span class="text-slate-400 shrink-0">✓ أُرسلت</span>`
-                    : `<button onclick="App.waSendRowRegistered('${iso}', ${JSON.stringify(r.substitute)}, ${r.period}, ${JSON.stringify(r.className || '')})" class="shrink-0 bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-100 px-2 py-0.5 rounded-lg font-semibold">📲</button>`
+                    : `<button onclick="App.waSendRowRegistered('${iso}', ${esc(JSON.stringify(r.substitute))}, ${r.period}, ${esc(JSON.stringify(r.className || ''))})" class="shrink-0 bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-100 px-2 py-0.5 rounded-lg font-semibold">📲</button>`
                   ) : ''}
                 </div>`;
               }).join('')}
@@ -2564,6 +2567,23 @@ const App = {
       save();
       this.page('absence');
     }, 'تعديل التوزيع للجميع');
+  },
+
+  // حذف معلم غائب معتمد ليوم معيّن: تُحذف كل حصصه من الأرشيف وتُعاد عدادات البدلاء
+  deleteAbsent(iso, absentName) {
+    if (db.absDraft?.editing) { this.alert('أنهِ أو ألغِ وضع تعديل التوزيع أولًا.'); return; }
+    const entries = (db.log || []).filter(x => x.date === iso && x.absent === absentName);
+    if (!entries.length) return;
+    this.confirm(`سيتم حذف الغائب «${absentName}» بكل حصصه (${entries.length}) من اعتماد ${dmy(iso)}، وتُسترجع حصص الاحتياط من عدّادات البدلاء. هل تريد المتابعة؟`, () => {
+      entries.forEach(e => {
+        if (e.substitute === 'إدارة ذاتية') return;
+        const st = db.teachers.find(t => t.name === e.substitute);
+        if (st) db.cnt[st.id] = Math.max(0, (db.cnt[st.id] || 0) - 1);
+      });
+      db.log = db.log.filter(x => !(x.date === iso && x.absent === absentName));
+      save();
+      if (this._currentPage === 'reports') this.reports(); else this.page(this._currentPage || 'absence');
+    }, 'حذف الغائب');
   },
 
   cancelEditDistribution() {
@@ -2870,7 +2890,7 @@ const App = {
                           const pct = sc.quota > 0 ? Math.min(100, Math.round((sc.assigned / sc.quota) * 100)) : 0;
                           return `
                             <option value="${sc.teacher.id}" ${!r.selfManaged && sc.teacher.id == r.selectedTeacherId ? 'selected' : ''}>
-                              ${esc(sc.teacher.name)} (${sc.assigned}/${sc.quota} - ${pct}%)${sc.workedPrevDay ? ' ⚠ يوم متتالٍ' : ''}
+                              ${esc(sc.teacher.name)} (${sc.assigned}/${sc.quota} - ${pct}%)${sc.workedPrevDay ? ' ⚠ يومان متتاليان' : ''}
                             </option>
                           `;
                         }).join('')}
@@ -2883,6 +2903,7 @@ const App = {
                       <div>
                         <span>البديل الحالي: </span>
                         <strong class="text-emerald-900">${esc(selectedT.name)}</strong>
+                        ${(r.scoredList || []).some(c => c.teacher.id == selectedT.id && c.workedPrevDay) ? '<span class="bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full text-[11px] font-bold mr-2">⚠ يومان متتاليان (اختيار يدوي)</span>' : ''}
                         <span class="bg-white px-2 py-0.5 rounded-full border border-emerald-200 font-bold text-emerald-700 mr-2">${db.cnt[selectedT.id]||0}/${selectedT.quota||3} (${selectedT.quota > 0 ? Math.min(100, Math.round(((db.cnt[selectedT.id]||0)/selectedT.quota)*100)) : 0}%)</span>
                       </div>
                       <span class="flex items-center gap-2">
@@ -3034,10 +3055,12 @@ const App = {
           });
 
         row.scoredList = candidates;
-        if (candidates.length) {
-          row.selectedTeacherId = candidates[0].teacher.id;
+        // التوزيع الآلي لا يُسند معلمًا أخذ احتياطًا في يوم متتالٍ؛ يبقى ظاهرًا في القائمة للاختيار اليدوي مع تنبيه
+        const auto = candidates.find(c => !c.workedPrevDay);
+        if (auto) {
+          row.selectedTeacherId = auto.teacher.id;
           row.status = 'تم التوزيع';
-          used.add(candidates[0].teacher.id);
+          used.add(auto.teacher.id);
         } else {
           row.status = 'غير موزعة';
         }
@@ -3218,6 +3241,7 @@ const App = {
                   <th class="p-3.5">المادة</th>
                   <th class="p-3.5">الفصل</th>
                   <th class="p-3.5">المعلم البديل</th>
+                  <th class="p-3.5 no-print"></th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100">
@@ -3230,8 +3254,9 @@ const App = {
                     <td class="p-3.5 text-slate-700">${esc(x.subject)}</td>
                     <td class="p-3.5 text-slate-600">${esc(x.className)}</td>
                     <td class="p-3.5 font-bold text-indigo-700">${esc(x.substitute)}</td>
+                    <td class="p-3.5 no-print"><button onclick="App.deleteAbsent('${esc(x.date)}', ${esc(JSON.stringify(x.absent))})" title="حذف هذا الغائب (كل حصصه في هذا اليوم)" class="text-xs bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 px-2 py-0.5 rounded-lg font-semibold whitespace-nowrap">🗑️ حذف الغائب</button></td>
                   </tr>
-                `).join('') || `<tr><td colspan="7" class="p-8 text-center text-slate-400 font-medium">لا توجد سجلات في أرشيف الغياب حتى الآن.</td></tr>`}
+                `).join('') || `<tr><td colspan="8" class="p-8 text-center text-slate-400 font-medium">لا توجد سجلات في أرشيف الغياب حتى الآن.</td></tr>`}
               </tbody>
             </table>
           </div>
