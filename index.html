@@ -148,7 +148,14 @@ const RAFID_API_URL = 'https://script.google.com/macros/s/AKfycbzgmhNSqLGjoQ1Br9
   try {
     const q = new URLSearchParams((location.hash || '').replace(/^#/, '') || location.search);
     const c = (q.get('s') || '').trim(), old = localStorage.getItem('schoolSyncCode') || '';
-    if (c && old && c !== old) ['schoolReserveDB', 'waToken', 'waPhoneId', 'rafidInfo', 'schoolSyncRev', 'schoolSyncDirty', 'schoolReserveDB_backup'].forEach(k => localStorage.removeItem(k));
+    if (c && old && c !== old) {
+      const keys = ['schoolReserveDB', 'waToken', 'waPhoneId', 'schoolSyncRev', 'schoolSyncDirty'];
+      const stash = {}; keys.forEach(k => { const v = localStorage.getItem(k); if (v !== null) stash[k] = v; });
+      try { localStorage.setItem('rafidStash:' + old, JSON.stringify(stash)); } catch (e) {}   // نحتفظ بنسخة المدرسة السابقة ولا نحذفها
+      keys.concat(['rafidInfo', 'schoolReserveDB_backup']).forEach(k => localStorage.removeItem(k));
+      const back = localStorage.getItem('rafidStash:' + c);                                    // وإن سبق فتح الرابط الجديد هنا نستعيد بياناته
+      if (back) { const o = JSON.parse(back); Object.keys(o).forEach(k => localStorage.setItem(k, o[k])); }
+    }
   } catch (e) {}
 })();
 
@@ -250,6 +257,8 @@ function mergeDbs(local, remote) {
 function backupLocalDb(tag) { try { localStorage.setItem('schoolReserveDB_backup', JSON.stringify({ tag, at: Date.now(), db })); } catch (e) {} }
 function adoptRemote(remote, merge) {
   const rdb = JSON.parse(remote.data);
+  // لا نستبدل جدولًا محليًا فيه حصص بنسخة سحابية بلا حصص: ندمجهما بدل ذلك
+  if (!merge && Object.keys(db.s || {}).length && !Object.keys(rdb.s || {}).length) merge = true;
   backupLocalDb(merge ? 'before-merge' : 'before-replace');
   db = merge ? mergeDbs(db, rdb) : rdb;
   normalizeDb();
@@ -259,6 +268,7 @@ function adoptRemote(remote, merge) {
   const busy = !document.getElementById('modal').classList.contains('hidden') ||
                /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
   if (!busy && window.App) App.page(App._currentPage || 'home');
+  return merge;
 }
 async function pushCloud(attempt = 0) {
   const url = cloudEndpoint();
@@ -312,10 +322,10 @@ async function pullCloud() {
       syncReady = true;
       if (myRev === null) {                              // أول اتصال لهذا الجهاز
         if (hasLocal) { adoptRemote(remote, true); setDirty(true); await pushCloud(); }
-        else { adoptRemote(remote, false); setDirty(false); }
+        else { if (adoptRemote(remote, false)) { setDirty(true); await pushCloud(); } else setDirty(false); }
       } else if (rrev > myRev) {
         if (isDirty()) { adoptRemote(remote, true); setDirty(true); await pushCloud(); }
-        else adoptRemote(remote, false);
+        else if (adoptRemote(remote, false)) { setDirty(true); await pushCloud(); }
       } else if (isDirty()) await pushCloud();
       setSyncStatus('ok');
       return;
@@ -656,6 +666,7 @@ const App = {
             ${db.school.logo ? `<div class="flex items-center gap-3"><img src="${esc(db.school.logo)}" alt="الشعار الحالي" class="w-16 h-16 object-contain rounded-xl border p-1 bg-slate-50"><button type="button" onclick="App.removeLogo()" class="text-xs text-rose-600 hover:underline">إزالة الشعار</button></div>` : '<span class="text-xs text-slate-400">لا يوجد شعار مرفوع حالياً</span>'}
           </div>
         </div>
+        ${localStorage.getItem('schoolReserveDB_backup') ? `<div class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center justify-between gap-3"><span>توجد نسخة احتياطية محلية من قبل آخر مزامنة (${new Date((JSON.parse(localStorage.getItem('schoolReserveDB_backup')||'{}').at)||Date.now()).toLocaleString('ar-OM')}).</span><button type="button" onclick="App.restoreLocalBackup()" class="shrink-0 bg-white border border-amber-300 hover:bg-amber-100 px-3 py-1.5 rounded-lg font-semibold">↩ استرجاعها</button></div>` : ''}
         <div class="flex justify-end pt-2">
           <button onclick="App.saveSchoolSettings()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-semibold shadow-md transition-all">حفظ الإعدادات</button>
         </div>
@@ -798,6 +809,15 @@ const App = {
     if (prev) {
       prev.innerHTML = '<span class="text-xs text-slate-400">تم إزالة الشعار</span>';
     }
+  },
+
+  restoreLocalBackup() {
+    let bk = null; try { bk = JSON.parse(localStorage.getItem('schoolReserveDB_backup') || 'null'); } catch (e) {}
+    if (!bk || !bk.db) { this.alert('لا توجد نسخة احتياطية.'); return; }
+    this.confirm('سيتم استرجاع بيانات هذا الجهاز كما كانت قبل آخر مزامنة (الجدول والمعلمون والأرشيف)، ثم تُرفع للسحابة. هل تريد المتابعة؟', () => {
+      db = bk.db; normalizeDb(); save();
+      this.closeM(); this.page('home');
+    }, 'استرجاع النسخة الاحتياطية');
   },
 
   saveSchoolSettings() {
