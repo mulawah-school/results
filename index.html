@@ -2926,12 +2926,7 @@ const App = {
               const candidates = this.getAbsenceCandidates(r, new Set(
                 rows.filter((x,i)=>i!==rowIndex && x.day===r.day && x.period===r.period && x.selectedTeacherId).map(x=>x.selectedTeacherId)
               )).map(t => this.scoreAbsenceCandidate(t, r, rows))
-              .sort((a,b) => {
-                if (a.workedPrevDay !== b.workedPrevDay) return a.workedPrevDay ? 1 : -1;
-                if (a.pct !== b.pct) return a.pct - b.pct;
-                if (a.assigned !== b.assigned) return a.assigned - b.assigned;
-                return String(a.teacher.name).localeCompare(String(b.teacher.name),'ar');
-              });
+              .sort((a,b) => this.compareCandidates(a,b));
 
               r.scoredList = candidates;
 
@@ -3055,6 +3050,18 @@ const App = {
     return run <= MAX_CONSECUTIVE;
   },
 
+  // ترتيب المرشحين: 1) عدم التتالي  2) العدالة: الأقل نسبة إشغال (من أخذ نسبته يُؤخَّر ويُقدَّم من نسبته أقل أو 0%)
+  // 3) الأقل حصصًا في ذلك اليوم (حصصه الفعلية + الاحتياط الموزع له)  4) الأقل عددًا في حصص الاحتياط
+  // 5) الأبعد عهدًا بآخر احتياط  6) الاسم
+  compareCandidates(a, b) {
+    if (a.workedPrevDay !== b.workedPrevDay) return a.workedPrevDay ? 1 : -1;
+    if (a.pct !== b.pct) return a.pct - b.pct;
+    if (a.load !== b.load) return a.load - b.load;
+    if (a.assigned !== b.assigned) return a.assigned - b.assigned;
+    if (a.lastDate !== b.lastDate) return a.lastDate < b.lastDate ? -1 : 1;
+    return String(a.teacher.name).localeCompare(String(b.teacher.name), 'ar');
+  },
+
   scoreAbsenceCandidate(t, row, draftRows) {
     const actual = db.cnt[t.id] || 0;
     const quota = Number(t.quota ?? 3);
@@ -3067,8 +3074,12 @@ const App = {
     const prevSchoolDay = previousSchoolDateISO(row.date), nextSchoolDay = nextSchoolDateISO(row.date);
     const workedPrevDay = (db.log || []).some(x => x.substitute === t.name && (x.date === prevSchoolDay || x.date === nextSchoolDay));
 
+    const lastDate = (db.log || []).reduce((m, x) => (x.substitute === t.name && x.date > m ? x.date : m), '');
+    const load = this.teacherBusyPeriods(t, row).size;
     return {
       teacher:t,
+      lastDate,
+      load,
       assigned,
       quota,
       deficit,
@@ -3108,12 +3119,7 @@ const App = {
       group2.forEach(row => {
         const candidates = this.getAbsenceCandidates(row, used)
           .map(t => this.scoreAbsenceCandidate(t,row,rows))
-          .sort((a,b) => {
-            if (a.workedPrevDay !== b.workedPrevDay) return a.workedPrevDay ? 1 : -1;
-            if (a.pct !== b.pct) return a.pct - b.pct;
-            if (a.assigned !== b.assigned) return a.assigned - b.assigned;
-            return String(a.teacher.name).localeCompare(String(b.teacher.name),'ar');
-          });
+          .sort((a,b) => this.compareCandidates(a,b));
 
         row.scoredList = candidates;
         // التوزيع الآلي لا يُسند معلمًا أخذ احتياطًا في يوم متتالٍ؛ يبقى ظاهرًا في القائمة للاختيار اليدوي مع تنبيه
