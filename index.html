@@ -1328,6 +1328,43 @@ const App = {
     save();
   },
 
+  // ===== مطابقة الأسماء بتساهل (لا يشترط تطابق 100%) =====
+  // تنظيف الاسم: حذف التشكيل والألقاب، توحيد الهمزات والياء والتاء المربوطة، ودمج «عبد الله» → «عبدالله»
+  arNorm(v) {
+    let t = String(v ?? '').replace(/[ً-ٰٟـ]/g, '')
+      .replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ئ/g, 'ي').replace(/ؤ/g, 'و').replace(/ة/g, 'ه')
+      .replace(/[^ء-يa-zA-Z\s]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+    t = t.replace(/^(ال)?(استاذ|استاذه|معلم|معلمه|مدرس|مدرسه|دكتور|دكتوره|مشرف|مشرفه)\s+/, '').replace(/^(ا|د|م)\s+/, '');
+    t = t.replace(/(^|\s)(عبد|ابو|ام)\s+(?=\S)/g, '$1$2');
+    return t;
+  },
+  lev1(a, b) {                                   // هل المسافة بين الكلمتين حرف واحد أو أقل؟
+    if (a === b) return true;
+    if (Math.abs(a.length - b.length) > 1) return false;
+    let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++;
+    if (a.length === b.length) return a.slice(i + 1) === b.slice(i + 1);
+    return a.length > b.length ? a.slice(i + 1) === b.slice(i) : b.slice(i + 1) === a.slice(i);
+  },
+  wordSim(a, b) { return a === b ? 1 : (Math.min(a.length, b.length) >= 4 && this.lev1(a, b) ? 0.85 : 0); },
+  nameScore(a, b) {
+    const A = this.arNorm(a).split(' ').filter(Boolean), B = this.arNorm(b).split(' ').filter(Boolean);
+    if (!A.length || !B.length) return 0;
+    if (A.join('') === B.join('')) return 1;
+    const best = (x, list) => Math.max(0, ...list.map(y => this.wordSim(x, y)));
+    const dice = (A.reduce((s, x) => s + best(x, B), 0) + B.reduce((s, y) => s + best(y, A), 0)) / (A.length + B.length);
+    // اسم مختصر (٢ كلمة فأكثر) محتوى كاملًا في الاسم الأطول مع تطابق الاسم الأول
+    const [sh, lg] = A.length <= B.length ? [A, B] : [B, A];
+    const subset = sh.length >= 2 && sh.every(x => best(x, lg) >= 0.85) && this.wordSim(A[0], B[0]) >= 0.85 ? 0.92 : 0;
+    return Math.max(dice, subset);
+  },
+  // أفضل معلم مطابق للاسم: يُرجع {teacher, score, exact} أو {ambiguous:true} إن تساوى مرشحان
+  matchTeacherByName(name) {
+    const scored = db.teachers.map(t => ({ t, sc: this.nameScore(name, t.name) })).filter(x => x.sc >= 0.8).sort((a, b) => b.sc - a.sc);
+    if (!scored.length) return null;
+    if (scored[1] && scored[0].sc - scored[1].sc < 0.05 && scored[0].sc < 1) return { ambiguous: true, names: scored.slice(0, 2).map(x => x.t.name) };
+    return { teacher: scored[0].t, score: scored[0].sc, exact: scored[0].sc === 1 };
+  },
+
   // استيراد أرقام هواتف المعلمين من ملف إكسل (عمود اسم + عمود رقم هاتف)، ومطابقتها بالاسم مع المعلمين الحاليين
   importTeacherPhones(input) {
     const file = input.files?.[0];
@@ -1337,11 +1374,7 @@ const App = {
       try {
         const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
         const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
-        const normName = s => this.normalize(s).replace(/\s+/g, '');
-        const byName = {};
-        db.teachers.forEach(t => { byName[normName(t.name)] = t; });
-
-        let matched = 0, unmatched = [];
+        let exact = 0; const approx = [], unmatched = [], ambiguous = [];
         rows.forEach(row => {
           const cells = row.map(c => this.normalize(c)).filter(Boolean);
           if (cells.length < 2) return;
@@ -1350,13 +1383,21 @@ const App = {
           const nameCell = cells.find(c => c !== phoneCell && !/^\d+$/.test(c));
           if (!phoneCell || !nameCell) return;
           const phone = phoneCell.replace(/[^\d+]/g, '');
-          const t = byName[normName(nameCell)];
-          if (t) { t.phone = phone; matched++; } else { unmatched.push(nameCell); }
+          const m = this.matchTeacherByName(nameCell);
+          if (!m) unmatched.push(nameCell);
+          else if (m.ambiguous) ambiguous.push(`${nameCell} ← (${m.names.join(' / ')})`);
+          else { m.teacher.phone = phone; if (m.exact) exact++; else approx.push(`${nameCell} ← ${m.teacher.name}`); }
         });
 
         save();
         this.page(this._currentPage || 'teachers');
-        this.alert(`تم استيراد ${matched} رقم هاتف بنجاح.` + (unmatched.length ? ` تعذّر مطابقة ${unmatched.length} اسم غير موجود في قائمة المعلمين.` : ''));
+        const list = (title, arr, cls) => arr.length ? `<div class="mt-3"><div class="font-bold ${cls} text-sm mb-1">${title} (${arr.length})</div><ul class="text-xs text-slate-600 space-y-0.5 max-h-40 overflow-auto">${arr.map(x => `<li>• ${esc(x)}</li>`).join('')}</ul></div>` : '';
+        this.openM('نتيجة استيراد الهواتف', `
+          <div class="text-sm text-slate-700">تم استيراد <b class="text-emerald-700">${exact + approx.length}</b> رقم هاتف (${exact} بتطابق تام، ${approx.length} بتطابق تقريبي).</div>
+          ${list('مطابقة تقريبية — راجعها (اسم الملف ← اسم المعلم)', approx, 'text-indigo-700')}
+          ${list('أسماء متشابهة مع أكثر من معلم — لم تُستورد، أضفها يدويًا', ambiguous, 'text-amber-700')}
+          ${list('أسماء لم تُطابَق مع أي معلم', unmatched, 'text-rose-700')}
+          <div class="mt-4 flex justify-end"><button onclick="App.closeM()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-semibold">حسناً</button></div>`);
       } catch (err) {
         this.alert('تعذّرت قراءة ملف الهواتف. تأكد أنه يحتوي عمودين: اسم المعلم ورقم الهاتف.');
       }
