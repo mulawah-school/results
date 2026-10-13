@@ -933,10 +933,10 @@ const App = {
                     const shared = sharedInfoFor(t.id,d,p);
                     const c = l.sub ? (subjectColorMap[l.sub] || { bg: '#e2e8f0', text: '#1e293b' }) : null;
                     const cellStyle = (!f && c) ? `background:${c.bg};color:${c.text};` : '';
-                    const tooltip = l.sub ? esc(l.sub) + (l.cl ? ' — ' + esc(l.cl) : '') : '';
+                    const tooltip = l.sub ? esc(l.sub) + ((l.cl || l.cls) ? ' — ' + esc(l.cl || l.cls) : '') : '';
                     return `<td class="p-1 border-l border-slate-100 align-top ${f ? 'bg-amber-50/80' : ''}">
                       <button onclick="App.editL(${t.id},'${d}',${p})" title="${tooltip}" style="${cellStyle}" class="w-full min-w-[36px] min-h-[70px] rounded-lg p-1 hover:opacity-80 transition-opacity flex items-center justify-center font-bold">
-                        ${l.sub ? `<div style="writing-mode: vertical-rl; text-orientation: mixed; white-space: nowrap; transform: rotate(180deg); line-height: 1.3; text-align: center;" class="text-[10px]"><div class="font-bold">${esc(l.sub)}${shared ? ' 🔗' : ''}${f ? ' 🟠' : ''}</div>${l.cl ? `<div class="text-[9px] opacity-80">${esc(l.cl)}</div>` : ''}</div>` : '<span class="text-slate-300">—</span>'}
+                        ${l.sub ? `<div style="writing-mode: vertical-rl; text-orientation: mixed; white-space: nowrap; transform: rotate(180deg); line-height: 1.3; text-align: center;" class="text-[10px]"><div class="font-bold">${esc(l.sub)}${shared ? ' 🔗' : ''}${f ? ' 🟠' : ''}</div>${(l.cl || l.cls) ? `<div class="text-[9px] opacity-80">${esc(l.cl || l.cls)}</div>` : ''}</div>` : '<span class="text-slate-300">—</span>'}
                       </button>
                     </td>`;
                   }).join('')).join('')}
