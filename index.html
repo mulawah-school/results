@@ -643,7 +643,13 @@ const pctOf = t => { const q = quotaOf(t), n = db.cnt[t.id] || 0; return q > 0 ?
 function primarySubject(tid) {
   const t = db.teachers.find(x => String(x.id) === String(tid));
   if (t && t.dept) return t.dept;
-  return teacherSubjectStats(tid)[0]?.[0] || ADMIN_DEPT;
+  const st = teacherSubjectStats(tid)[0]?.[0];
+  if (t && t.lastDept) return t.lastDept;     // القسم محفوظ من آخر جدول: لا يتغير برفع جدول جديد
+  return st || ADMIN_DEPT;
+}
+// تثبيت قسم كل معلم (من جدوله الحالي) كي يبقى توزيع الأقسام كما هو عند حذف الجدول أو رفع جدول جديد
+function freezeDepts() {
+  db.teachers.forEach(t => { if (!t.dept && !t.lastDept) { const st = teacherSubjectStats(t.id)[0]?.[0]; if (st) t.lastDept = st; } });
 }
 // قائمة المواد الكاملة لاختيار القسم: مواد الجدول + المواد المعتادة + الوظائف الإدارية
 function deptOptions() {
@@ -1344,7 +1350,7 @@ const App = {
     this.closeM();
     this.teachers();
   },
-  setDept(id, v) { const t = db.teachers.find(t => t.id == id); if (t) { if (v) t.dept = v; else delete t.dept; save(); this.teachers(); } },
+  setDept(id, v) { const t = db.teachers.find(t => t.id == id); if (t) { if (v) t.dept = v; else { delete t.dept; delete t.lastDept; } save(); this.teachers(); } },
   rename(id, n) { const t = db.teachers.find(t => t.id == id); if (t) { t.name = n.trim() || t.name; save(); } },
 
   openTeacherSchedule(id) {
@@ -1631,6 +1637,7 @@ const App = {
               📂 رفع الجدول المدرسي
               <input id="schoolFile" type="file" accept=".xlsx" class="hidden" onchange="App.readAnyScheduleFile(this)">
             </label>
+            <button onclick="App.deleteSchedule()" title="حذف الجدول المدرسي" class="bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 px-4 py-3.5 rounded-2xl font-semibold transition-all flex items-center gap-2">🗑️ حذف الجدول</button>
           </div>
         </div>
 
@@ -2433,6 +2440,7 @@ const App = {
       return null;
     };
     const existing = new Set(db.teachers);
+    freezeDepts();
     const touched = new Set();
     rows.forEach(x => { const t = resolve(x.teacher); if (t) touched.add(String(t.id)); });
     Object.keys(db.s).forEach(k => { if (touched.has(String(k.split('|')[0]))) delete db.s[k]; });
@@ -2470,6 +2478,7 @@ const App = {
     });
 
     this.dedupeTeachers(true);
+    freezeDepts();   // المعلمون الجدد يأخذون قسمهم من الجدول الجديد، والقدامى يحتفظون بقسمهم وحدّهم
     db.schoolScheduleMeta = {
       importedAt: new Date().toLocaleString('ar-OM'),
       rows: rows.length,
@@ -2632,6 +2641,17 @@ const App = {
     this.schedule();
   },
 
+  // حذف الجدول المدرسي (الحصص فقط): يبقى المعلمون بأقسامهم وحدود الاحتياط وهواتفهم وعدادات احتياطهم وأرشيف الغياب
+  deleteSchedule() {
+    this.confirm('هل تريد حذف الجدول المدرسي بالكامل؟ ستُحذف الحصص والتفريغات فقط، ويبقى المعلمون وأقسامهم وحدود الاحتياط وأرشيف الغياب.', () => {
+      freezeDepts();
+      db.s = {};
+      db.free = {};
+      db.schoolScheduleMeta = null;
+      save();
+      this.schedule();
+    }, 'حذف الجدول المدرسي');
+  },
   clearAllFree() {
     this.confirm('هل تريد فعلاً إلغاء كافة حالات التفريغ المسجلة؟', () => {
       db.free = {};
