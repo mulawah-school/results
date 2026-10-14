@@ -635,6 +635,10 @@ function teacherSubjectStats(tid) {
 }
 
 const ADMIN_DEPT = 'الوظائف الإدارية';
+// حد الاحتياط والنسبة: مصدر واحد لكل الشاشات (البطاقات، التوزيع، تقرير الإحصاء) فيرتبط تعديل الحد بالتقرير مباشرة.
+// النسبة تُحسب وتستمر بعد 100% (مثلًا 200%) دون سقف، وإذا كان الحد 0 فتُعرض 100% بعد أول احتياط.
+const quotaOf = t => { const q = Number(t && t.quota); return Number.isFinite(q) && q >= 0 ? q : 3; };
+const pctOf = t => { const q = quotaOf(t), n = db.cnt[t.id] || 0; return q > 0 ? Math.round((n / q) * 100) : (n > 0 ? 100 : 0); };
 // القسم/المادة: الاختيار اليدوي للمعلم (dept) إن وُجد، وإلا المادة الأكثر في جدوله، وإلا «الوظائف الإدارية»
 function primarySubject(tid) {
   const t = db.teachers.find(x => String(x.id) === String(tid));
@@ -1018,7 +1022,6 @@ const App = {
     const subjectColorMap = buildSubjectColorMap();
 
     const candidate = activeTeachers()
-      .filter(t => (db.cnt[t.id] || 0) < (t.quota || 0))
       .sort((a,b) => {
         const qa = Number(a.quota) || 0, qb = Number(b.quota) || 0;
         const pa = qa > 0 ? (db.cnt[a.id] || 0) / qa : Infinity;
@@ -1066,7 +1069,7 @@ const App = {
                       <span class="text-[10px] text-slate-500">${teacherLessons(t.id).length} فعلي</span>
                       <span class="text-emerald-700 font-bold">احتياط: ${db.cnt[t.id] || 0}</span>
                       <span class="text-slate-400">/ ${t.quota ?? 0}</span>
-                      <span class="font-bold text-indigo-600">(${(t.quota || 0) > 0 ? Math.min(100, Math.round(((db.cnt[t.id] || 0) / t.quota) * 100)) : 0}%)</span>
+                      <span class="font-bold text-indigo-600">(${pctOf(t)}%)</span>
                     </div>
                   </td>
                   ${DAYS.map(d => PERIODS.map(p => {
@@ -1445,7 +1448,7 @@ const App = {
     this.renderTeacherScheduleModal(id);
   },
 
-  setQuota(id, v) { const t = db.teachers.find(t => t.id == id); if (t) { t.quota = Math.max(0, +v || 0); save(); } },
+  setQuota(id, v) { const t = db.teachers.find(t => t.id == id); if (t) { t.quota = Math.max(0, +v || 0); save(); if (this._currentPage === 'reports' || this._currentPage === 'home' || this._currentPage === 'teachers') this.page(this._currentPage); } },
   toggle(id, v) { const t = db.teachers.find(t => t.id == id); if (t) { t.active = v; save(); } },
   // دمج المعلمين المكررين (نفس الاسم بعد التطبيع): يُبقي الأقدم/الأكثر بيانات ويجمع العدادات وينقل الحصص
   dedupeTeachers(silent) {
@@ -2695,7 +2698,7 @@ const App = {
                   <input type="checkbox" class="abs-teacher-check w-4 h-4 accent-emerald-600" value="${t.id}" ${dr && dr.absentIds.includes(t.id) ? 'checked' : ''} onchange="App.buildAbsenceDraft()">
                   <span class="flex-1 text-sm font-semibold">${esc(t.name)}</span>
                   <span class="abs-badge hidden text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700" data-tname="${esc(t.name)}">غائب مسجّل</span>
-                  <span class="text-[11px] text-slate-400">${db.cnt[t.id]||0}/${t.quota||3} (${(t.quota||0) > 0 ? Math.min(100, Math.round(((db.cnt[t.id]||0)/(t.quota||3))*100)) : 0}%)</span>
+                  <span class="text-[11px] text-slate-400">${db.cnt[t.id]||0}/${quotaOf(t)} (${pctOf(t)}%)</span>
                 </label>`).join('')}
             </div>
           </div>
@@ -3166,7 +3169,7 @@ const App = {
                         <option value="">-- اختر بديل يدويًا --</option>
                         <option value="self" ${r.selfManaged ? 'selected' : ''}>🔧 إدارة ذاتية (بدون معلم بديل)</option>
                         ${candidates.map(sc => {
-                          const pct = sc.quota > 0 ? Math.min(100, Math.round((sc.assigned / sc.quota) * 100)) : 0;
+                          const pct = sc.quota > 0 ? Math.round((sc.assigned / sc.quota) * 100) : 100;
                           return `
                             <option value="${sc.teacher.id}" ${!r.selfManaged && sc.teacher.id == r.selectedTeacherId ? 'selected' : ''}>
                               ${esc(sc.teacher.name)} (${sc.assigned}/${sc.quota} - ${pct}%)${sc.workedPrevDay ? ' ⚠ يومان متتاليان' : ''}
@@ -3183,7 +3186,7 @@ const App = {
                         <span>البديل الحالي: </span>
                         <strong class="text-emerald-900">${esc(selectedT.name)}</strong>
                         ${(r.scoredList || []).some(c => c.teacher.id == selectedT.id && c.workedPrevDay) ? '<span class="bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full text-[11px] font-bold mr-2">⚠ يومان متتاليان (اختيار يدوي)</span>' : ''}
-                        <span class="bg-white px-2 py-0.5 rounded-full border border-emerald-200 font-bold text-emerald-700 mr-2">${db.cnt[selectedT.id]||0}/${selectedT.quota||3} (${selectedT.quota > 0 ? Math.min(100, Math.round(((db.cnt[selectedT.id]||0)/selectedT.quota)*100)) : 0}%)</span>
+                        <span class="bg-white px-2 py-0.5 rounded-full border border-emerald-200 font-bold text-emerald-700 mr-2">${db.cnt[selectedT.id]||0}/${quotaOf(selectedT)} (${pctOf(selectedT)}%)</span>
                       </div>
                       <span class="flex items-center gap-2">
                         <span class="text-emerald-700 font-bold">✓ تم الإسناد</span>
@@ -3224,11 +3227,7 @@ const App = {
         const l = lesson(t.id, row.day, row.period);
         return isFreed(t.id, row.day, row.period) || !(l.sub || l.cl);
       })
-      .filter(t => {
-        const quota = Number(t.quota ?? 3);
-        return (db.cnt[t.id]||0) < quota;
-      })
-      .filter(t => this.reserveRulesOk(t, row));
+      .filter(t => this.reserveRulesOk(t, row));   // لا يُستبعد من بلغ حدّه: التوزيع مستمر طوال العام والعدالة تقدّم الأقل نسبة
   },
 
   // الحصص المشغولة للمعلم في يوم معيّن: حصصه الفعلية (غير المفرَّغة) + احتياطات موزعة له في نفس اليوم
@@ -3566,10 +3565,10 @@ const App = {
       return;
     }
 
-    const statsList = db.teachers.map(t => {
+    const statsList = db.teachers.filter(t => t.active !== false).map(t => {   // المعلم المستثنى من الاحتياط لا يظهر في الإحصاء
       const taken = db.cnt[t.id] || 0;
-      const quota = t.quota || 3;
-      const pct = quota > 0 ? Math.min(100, Math.round((taken / quota) * 100)) : 0;
+      const quota = quotaOf(t);
+      const pct = pctOf(t);
       return {
         teacher: t,
         taken,
