@@ -254,8 +254,10 @@ function mergeDbs(local, remote) {
     if (t) out.cnt[t.id] = (out.cnt[t.id] || 0) + 1;
   });
   const ids = new Set((out.teachers || []).map(t => String(t.id)));
+  const names = new Set((out.teachers || []).map(t => String(t.name || '').replace(/\s+/g, ' ').trim()));
   (remote.teachers || []).forEach(t => {
     if (ids.has(String(t.id))) return;
+    if (names.has(String(t.name || '').replace(/\s+/g, ' ').trim())) return;   // نفس الاسم بمعرّف مختلف (استيراد من جهازين) لا يُكرَّر
     out.teachers.push(t); out.cnt[t.id] = Math.max(out.cnt[t.id] || 0, (remote.cnt || {})[t.id] || 0);
   });
   out.waSentLog = Object.assign({}, remote.waSentLog || {}, out.waSentLog || {});
@@ -1066,6 +1068,7 @@ const App = {
               return `
                 <div class="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-5 hover:border-emerald-300 transition-all">
                   <div class="flex items-start gap-3">
+                    <input type="checkbox" ${(App._selT && App._selT.has(String(t.id))) ? 'checked' : ''} onchange="App.toggleSelT(${t.id},this.checked)" title="تحديد للحذف" class="w-5 h-5 mt-3 accent-rose-600 shrink-0">
                     <div class="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-700 font-bold flex items-center justify-center shrink-0">👨‍🏫</div>
                     <div class="flex-1 min-w-0">
                       <input value="${esc(t.name)}" onchange="App.rename(${t.id},this.value)" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold text-slate-800 outline-none focus:border-emerald-500">
@@ -1157,6 +1160,8 @@ const App = {
             <p class="text-sm text-slate-500 mt-1">يتم استخراج التخصص من المادة الفعلية في الجدول، مع عرض عدد الحصص الفعلية والاحتياط المأخوذ والحد المسموح.</p>
           </div>
           <div class="flex gap-2">
+            <button id="delSelBtn" onclick="App.delSelectedT()" class="hidden border border-rose-300 text-rose-700 hover:bg-rose-50 px-4 py-3 rounded-2xl font-semibold">🗑️ حذف المحدد</button>
+            <button onclick="App.dedupeTeachers()" class="border border-sky-300 text-sky-700 hover:bg-sky-50 px-4 py-3 rounded-2xl font-semibold">🧹 دمج المكرر</button>
             <button onclick="App.resetAllCounts()" class="border border-amber-300 text-amber-700 hover:bg-amber-50 px-4 py-3 rounded-2xl font-semibold">↺ تصفير جميع المعلمين</button>
             <label class="border border-indigo-300 text-indigo-700 hover:bg-indigo-50 px-4 py-3 rounded-2xl font-semibold cursor-pointer">
               📱 استيراد هواتف المعلمين
@@ -1317,6 +1322,59 @@ const App = {
 
   setQuota(id, v) { const t = db.teachers.find(t => t.id == id); if (t) { t.quota = Math.max(0, +v || 0); save(); } },
   toggle(id, v) { const t = db.teachers.find(t => t.id == id); if (t) { t.active = v; save(); } },
+  // دمج المعلمين المكررين (نفس الاسم بعد التطبيع): يُبقي الأقدم/الأكثر بيانات ويجمع العدادات وينقل الحصص
+  dedupeTeachers(silent) {
+    const groups = {};
+    db.teachers.forEach(t => (groups[this.arNorm(t.name)] ||= []).push(t));
+    let removed = 0;
+    Object.values(groups).forEach(g => {
+      if (g.length < 2) return;
+      const score = t => (t.phone ? 1000 : 0) + Object.keys(db.s).filter(k => String(k.split('|')[0]) === String(t.id)).length + (db.cnt[t.id] || 0) * 10 - (t.imported ? 0 : -500);
+      g.sort((a, b) => score(b) - score(a));
+      const keep = g[0];
+      g.slice(1).forEach(d => {
+        Object.keys(db.s).forEach(k => {
+          const [id, ...rest] = k.split('|');
+          if (String(id) !== String(d.id)) return;
+          const nk = [keep.id, ...rest].join('|');
+          if (!db.s[nk]) db.s[nk] = db.s[k];
+          delete db.s[k];
+        });
+        Object.keys(db.free).forEach(k => {
+          const [id, ...rest] = k.split('|');
+          if (String(id) !== String(d.id)) return;
+          const nk = [keep.id, ...rest].join('|');
+          if (!db.free[nk]) db.free[nk] = db.free[k];
+          delete db.free[k];
+        });
+        db.cnt[keep.id] = Math.max(db.cnt[keep.id] || 0, db.cnt[d.id] || 0);
+        if (!keep.phone && d.phone) keep.phone = d.phone;
+        delete db.cnt[d.id];
+        db.teachers = db.teachers.filter(t => t !== d);
+        removed++;
+      });
+    });
+    if (removed) { if (db.schoolScheduleMeta) db.schoolScheduleMeta.teachers = db.teachers.length; save(); }
+    if (!silent) { this.alert(removed ? `تم دمج ${removed} اسم مكرر.` : 'لا توجد أسماء مكررة.'); if (removed) this.page(this._currentPage || 'teachers'); }
+    return removed;
+  },
+  toggleSelT(id, on) { this._selT = this._selT || new Set(); on ? this._selT.add(String(id)) : this._selT.delete(String(id)); const b = $('delSelBtn'); if (b) { b.textContent = `🗑️ حذف المحدد (${this._selT.size})`; b.classList.toggle('hidden', !this._selT.size); } },
+  delSelectedT() {
+    const ids = [...(this._selT || [])];
+    if (!ids.length) return;
+    this.confirm(`هل تريد حذف ${ids.length} معلم نهائيًا مع حصصهم في الجدول؟`, () => {
+      ids.forEach(id => {
+        db.teachers = db.teachers.filter(t => String(t.id) !== id);
+        delete db.cnt[id];
+        Object.keys(db.s).forEach(k => { if (String(k.split('|')[0]) === id) delete db.s[k]; });
+        Object.keys(db.free).forEach(k => { if (String(k.split('|')[0]) === id) delete db.free[k]; });
+      });
+      this._selT = new Set();
+      if (db.schoolScheduleMeta) db.schoolScheduleMeta.teachers = db.teachers.length;
+      save();
+      this.page(this._currentPage || 'teachers');
+    }, 'حذف المحدد');
+  },
   delT(id) {
     this.confirm('هل أنت متأكد من حذف هذا المعلم نهائياً؟ سيتم حذف جميع حصصه المسجّلة في الجدول العام أيضًا.', () => {
       db.teachers = db.teachers.filter(t => t.id != id);
@@ -2235,10 +2293,21 @@ const App = {
   },
 
   importParsedRows(rows) {
-    db.s = {};
-
+    // الاستيراد يستبدل حصص المعلمين الموجودين في الملف فقط؛ المعلمون المضافون يدويًا وإعداداتهم (الحد، المشاركة، الهاتف) لا تتأثر ولا تتكرر الأسماء
     const map = {};
     db.teachers.forEach(t => map[this.normalize(t.name)] = t);
+    const resolve = (name) => {
+      const n = this.normalize(name);
+      if (map[n]) return map[n];
+      const m = this.matchTeacherByName(name);
+      if (m && m.teacher && m.score >= 0.9 && existing.has(m.teacher)) { map[n] = m.teacher; return m.teacher; }
+      return null;
+    };
+    const existing = new Set(db.teachers);
+    const touched = new Set();
+    rows.forEach(x => { const t = resolve(x.teacher); if (t) touched.add(String(t.id)); });
+    Object.keys(db.s).forEach(k => { if (touched.has(String(k.split('|')[0]))) delete db.s[k]; });
+    Object.keys(db.free).forEach(k => { if (touched.has(String(k.split('|')[0]))) delete db.free[k]; });
 
     const sharedMap = {};
     rows.forEach(x => {
@@ -2250,9 +2319,9 @@ const App = {
     });
 
     rows.forEach(x => {
-      let t = map[this.normalize(x.teacher)];
+      let t = resolve(x.teacher);
       if (!t) {
-        t = { id: Date.now() + Math.random(), name: x.teacher, active: true, quota: 3 };
+        t = { id: Date.now() + Math.random(), name: x.teacher, active: true, quota: 3, imported: true };
         db.teachers.push(t);
         db.cnt[t.id] = 0;
         map[this.normalize(x.teacher)] = t;
@@ -2261,6 +2330,7 @@ const App = {
       const sharedKey = `${x.day}|${x.period}|${this.normalize(x.cl)}`;
       const sharedTeachers = x.cl ? [...(sharedMap[sharedKey] || [])].filter(n => n !== x.teacher) : [];
 
+      touched.add(String(t.id));
       db.s[key(t.id, x.day, x.period)] = {
         sub: x.sub || 'اسم المادة',
         cl: x.cl || '',
@@ -2270,6 +2340,7 @@ const App = {
       };
     });
 
+    this.dedupeTeachers(true);
     db.schoolScheduleMeta = {
       importedAt: new Date().toLocaleString('ar-OM'),
       rows: rows.length,
