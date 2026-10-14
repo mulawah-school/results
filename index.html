@@ -634,8 +634,19 @@ function teacherSubjectStats(tid) {
   return Object.entries(counts).sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0], 'ar'));
 }
 
+const ADMIN_DEPT = 'الوظائف الإدارية';
+// القسم/المادة: الاختيار اليدوي للمعلم (dept) إن وُجد، وإلا المادة الأكثر في جدوله، وإلا «الوظائف الإدارية»
 function primarySubject(tid) {
-  return teacherSubjectStats(tid)[0]?.[0] || 'غير محدد';
+  const t = db.teachers.find(x => String(x.id) === String(tid));
+  if (t && t.dept) return t.dept;
+  return teacherSubjectStats(tid)[0]?.[0] || ADMIN_DEPT;
+}
+// قائمة المواد الكاملة لاختيار القسم: مواد الجدول + المواد المعتادة + الوظائف الإدارية
+function deptOptions() {
+  const base = ['اللغة العربية', 'اللغة الإنجليزية', 'الرياضيات', 'العلوم', 'الاحياء', 'الفيزياء', 'الكيمياء', 'الدراسات الاجتماعية', 'التربية الاسلامية', 'تقنية المعلومات', 'المهارات الموسيقية', 'الفنون التشكيلية', 'الرياضة المدرسية', 'المهارات الحياتية', 'التوجيه المهني'];
+  const set = new Set([...base, ...allActualSubjects()]);
+  set.delete(ADMIN_DEPT);
+  return [...set].sort((a, b) => a.localeCompare(b, 'ar')).concat([ADMIN_DEPT]);
 }
 
 // مجموعات المواد التي تُدمج معًا في جدول واحد بمسمى موحّد، مع بقاء اسم المادة الفعلي
@@ -656,6 +667,13 @@ function groupSubject(tid) {
   return grp ? grp.target : subj;
 }
 
+// أيقونة صغيرة تمثل المادة (بحسب كلمات في الاسم)
+function subjectIcon(subject) {
+  const n = String(subject || '');
+  const map = [[/إدار|ادار/, '🗂️'], [/عرب/, '📖'], [/انجليز|إنجليز/, '🔤'], [/رياض/, '➗'], [/كيمي/, '⚗️'], [/فيزي/, '🧲'], [/احياء|أحياء/, '🧬'], [/علوم/, '🔬'], [/اجتماع|تاريخ|جغراف/, '🌍'], [/اسلام|إسلام|قرآن|قران/, '🕌'], [/تقنية|حاسوب|حاسب/, '💻'], [/موسيق/, '🎵'], [/فنون|فنية|تشكيل/, '🎨'], [/رياضة|بدني/, '⚽'], [/حياتية/, '🧭'], [/توجيه/, '🧑‍💼']];
+  const m = map.find(([re]) => re.test(n));
+  return m ? m[1] : '📚';
+}
 function isSkillSubject(subject) {
   return SKILL_SUBJECTS.has(String(subject || '').trim());
 }
@@ -664,6 +682,7 @@ function subjectOrder() {
   const subjects = [...new Set(db.teachers.map(t => groupSubject(t.id)))]
     .filter(Boolean)
     .sort((a,b) => {
+      if ((a === ADMIN_DEPT) !== (b === ADMIN_DEPT)) return a === ADMIN_DEPT ? 1 : -1;
       const sa = isSkillSubject(a), sb = isSkillSubject(b);
       if (sa !== sb) return sa ? 1 : -1;
       return a.localeCompare(b, 'ar');
@@ -995,8 +1014,6 @@ const App = {
         .sort((a,b) => a.name.localeCompare(b.name, 'ar'))
     })).filter(g => g.teachers.length);
 
-    const noSubject = db.teachers.filter(t => primarySubject(t.id) === 'غير محدد');
-    if (noSubject.length) groups.push({subject:'غير محدد', teachers:noSubject});
 
     const subjectColorMap = buildSubjectColorMap();
 
@@ -1015,12 +1032,12 @@ const App = {
         .filter(Boolean).sort((a,b) => a.localeCompare(b, 'ar'));
       return `
       <section class="bg-white rounded-3xl p-5 card-shadow border border-slate-100 mb-6">
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-3 p-4 rounded-2xl bg-indigo-50 border border-indigo-100">
           <div>
-            <h3 class="font-extrabold text-lg text-slate-900">📚 ${esc(group.subject)}</h3>
+            <h3 class="font-extrabold text-lg text-indigo-900 flex items-center gap-2"><span class="w-9 h-9 rounded-xl bg-white border border-indigo-100 flex items-center justify-center text-lg">${subjectIcon(group.subject)}</span>${esc(group.subject)}</h3>
             <p class="text-xs text-slate-500">${group.teachers.length} معلم — كل مادة فعلية بلون ثابت داخل الجدول</p>
           </div>
-          ${isSkillSubject(group.subject) ? '<span class="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold">مادة مهارية</span>' : '<span class="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold">مادة دراسية</span>'}
+          ${isSkillSubject(group.subject) ? '<span class="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold">مادة مهارية</span>' : '<span class="px-3 py-1 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold">مادة دراسية</span>'}
         </div>
         ${renderSubjectLegend(subjectColorMap, groupSubjects)}
         <div class="overflow-x-auto rounded-2xl border border-slate-200">
@@ -1154,9 +1171,9 @@ const App = {
         .sort((a,b) => a.name.localeCompare(b.name, 'ar'));
       return `
         <section class="mb-7">
-          <div class="flex items-center justify-between mb-3">
-            <h4 class="font-extrabold text-lg text-slate-900">📚 ${esc(subject)}</h4>
-            <span class="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full">${list.length} معلم</span>
+          <div class="flex items-center justify-between mb-3 p-4 rounded-2xl bg-indigo-50 border border-indigo-100">
+            <h4 class="font-extrabold text-lg text-indigo-900 flex items-center gap-2"><span class="w-9 h-9 rounded-xl bg-white border border-indigo-100 flex items-center justify-center text-lg">${subjectIcon(subject)}</span>${esc(subject)}</h4>
+            <span class="text-xs bg-white text-indigo-700 border border-indigo-100 px-3 py-1 rounded-full font-bold">${list.length} معلم</span>
           </div>
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             ${list.map(t => {
@@ -1169,6 +1186,10 @@ const App = {
                     <div class="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-700 font-bold flex items-center justify-center shrink-0">👨‍🏫</div>
                     <div class="flex-1 min-w-0">
                       <input value="${esc(t.name)}" onchange="App.rename(${t.id},this.value)" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold text-slate-800 outline-none focus:border-emerald-500">
+                      <select onchange="App.setDept(${t.id},this.value)" title="القسم (المادة)" class="w-full mt-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-600 outline-none focus:border-emerald-500">
+                        <option value="">القسم: تلقائي (من الجدول)</option>
+                        ${deptOptions().map(o => `<option value="${esc(o)}" ${t.dept === o ? 'selected' : ''}>القسم: ${esc(o)}</option>`).join('')}
+                      </select>
                       <div class="flex flex-wrap gap-1.5 mt-2">
                         ${stats.map(([sub,n]) => `<span class="text-[10px] px-2 py-1 rounded-full bg-white border border-slate-200 text-slate-600">${esc(sub)}: ${n}</span>`).join('')}
                       </div>
@@ -1203,7 +1224,7 @@ const App = {
         </section>`;
     };
 
-    const skillHeader = skills.length ? `<div class="mt-10 mb-5 p-4 rounded-2xl bg-indigo-50 border border-indigo-100"><h3 class="font-extrabold text-xl text-indigo-900">🎨 المواد المهارية</h3><p class="text-sm text-indigo-700 mt-1">تظهر في أسفل إدارة المعلمين كما طلبت.</p></div>` : '';
+    const skillHeader = skills.length ? `<div class="mt-10 mb-5 p-4 rounded-2xl bg-indigo-50 border border-indigo-100"><h3 class="font-extrabold text-xl text-indigo-900">🎨 المواد المهارية</h3></div>` : '';
 
     const printSubjectColorMap = buildSubjectColorMap();
     const printLegendSubjects = allActualSubjects();
@@ -1300,6 +1321,12 @@ const App = {
           <label class="block text-sm font-semibold text-slate-700 mb-2">اسم المعلم</label>
           <input id="newTeacherName" type="text" placeholder="مثال: أ. محمد أحمد" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium text-slate-800">
         </div>
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-2">القسم (المادة)</label>
+          <select id="newTeacherDept" class="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 font-medium text-slate-800 bg-white">
+            ${deptOptions().map(o => `<option value="${esc(o)}" ${o === ADMIN_DEPT ? 'selected' : ''}>${esc(o)}</option>`).join('')}
+          </select>
+        </div>
         <button onclick="App.confirmAddTeacher()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-3.5 rounded-xl font-semibold shadow-md shadow-emerald-600/20 transition-all">حفظ وإضافة</button>
       </div>
     `);
@@ -1308,12 +1335,13 @@ const App = {
     const name = $('newTeacherName')?.value?.trim();
     if (!name) { this.alert('الرجاء إدخال اسم المعلم بشكل صحيح.'); return; }
     const id = Date.now();
-    db.teachers.push({ id, name, active: true, quota: 3 });
+    db.teachers.push({ id, name, active: true, quota: 3, dept: $('newTeacherDept')?.value || ADMIN_DEPT });
     db.cnt[id] = 0;
     save();
     this.closeM();
     this.teachers();
   },
+  setDept(id, v) { const t = db.teachers.find(t => t.id == id); if (t) { if (v) t.dept = v; else delete t.dept; save(); this.teachers(); } },
   rename(id, n) { const t = db.teachers.find(t => t.id == id); if (t) { t.name = n.trim() || t.name; save(); } },
 
   openTeacherSchedule(id) {
