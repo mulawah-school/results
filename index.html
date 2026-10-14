@@ -87,7 +87,6 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
         <span id="syncDot" class="w-2 h-2 rounded-full bg-slate-500 animate-pulse"></span>
       </div>
       <div id="syncDetail" class="text-[10px] text-slate-500 -mt-2"></div>
-      <button onclick="syncDiagnose()" class="w-full bg-white/5 hover:bg-white/10 text-slate-300 p-2 rounded-xl text-[11px] font-semibold transition-all">🩺 فحص المزامنة</button>
       <button id="syncNowBtn" onclick="syncNow()" class="w-full bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-200 p-2.5 rounded-xl text-xs font-semibold transition-all">🔄 مزامنة الآن</button>
       <button id="syncSettingsBtn" onclick="App.openSyncSettings()" class="w-full bg-white/10 hover:bg-white/15 text-white p-2.5 rounded-xl text-xs font-semibold transition-all">☁️ المزامنة الأونلاين</button>
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
@@ -1242,7 +1241,7 @@ const App = {
                       const l = lesson(t.id, d, p);
                       const c = l.sub ? (printSubjectColorMap[l.sub] || { bg: '#f1f5f9', text: '#1e293b' }) : null;
                       const style = c ? `background:${c.bg};color:${c.text};font-weight:700;` : '';
-                      return `<td style="border:1px solid #cbd5e1; padding:4px; text-align:center;${style}">${l.sub ? esc(l.sub) : '—'}</td>`;
+                      return `<td style="border:1px solid #cbd5e1; padding:4px; text-align:center;${style}">${l.sub ? esc(l.sub) + ((l.cl || l.cls) ? `<div style="font-size:9.5px;font-weight:800;margin-top:1px;" dir="ltr">${esc(l.cl || l.cls)}</div>` : '') : '—'}</td>`;
                     }).join('')}
                   </tr>`).join('')}
               </tbody>
