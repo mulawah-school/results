@@ -87,6 +87,7 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
         <span id="syncDot" class="w-2 h-2 rounded-full bg-slate-500 animate-pulse"></span>
       </div>
       <div id="syncDetail" class="text-[10px] text-slate-500 -mt-2"></div>
+      <button onclick="syncDiagnose()" class="w-full bg-white/5 hover:bg-white/10 text-slate-300 p-2 rounded-xl text-[11px] font-semibold transition-all">🩺 فحص المزامنة</button>
       <button id="syncNowBtn" onclick="syncNow()" class="w-full bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-200 p-2.5 rounded-xl text-xs font-semibold transition-all">🔄 مزامنة الآن</button>
       <button id="syncSettingsBtn" onclick="App.openSyncSettings()" class="w-full bg-white/10 hover:bg-white/15 text-white p-2.5 rounded-xl text-xs font-semibold transition-all">☁️ المزامنة الأونلاين</button>
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
@@ -414,6 +415,56 @@ async function syncNow() {
     await pullCloud();
     if (isDirty()) await pushCloud();
   } finally { if (b) { b.disabled = false; b.textContent = '🔄 مزامنة الآن'; } }
+}
+// فحص شامل لسبب عدم الحفظ: يختبر كل خطوة ويعرض النتيجة، مع زرّي إجبار الرفع/التحميل للإصلاح اليدوي
+async function syncDiagnose() {
+  const url = cloudEndpoint(), code = getSyncCode(), rows = [];
+  const add = (ok, t) => rows.push(`<div class="flex gap-2 py-1.5 border-b border-slate-100 text-sm"><span>${ok === null ? 'ℹ️' : ok ? '✅' : '❌'}</span><span class="flex-1">${esc(t)}</span></div>`);
+  const show = extra => App.openM('🩺 فحص المزامنة', `<div dir="rtl">${rows.join('')}${extra || ''}</div>`);
+  rows.push('<div class="text-sm text-slate-500 py-2">⏳ جارٍ الفحص...</div>'); show(); rows.length = 0;
+  add(!!code, code ? 'رمز المدرسة موجود في الرابط' : 'لا يوجد رمز مدرسة: افتح الرابط الذي فيه ?s=');
+  add(!!url, url ? 'عنوان الخادم مضبوط' : 'عنوان الخادم غير مضبوط');
+  add(null, `هذا الجهاز: رقم الإصدار=${getRev() ?? 'لا يوجد'} | تعديلات معلّقة=${isDirty() ? 'نعم' : 'لا'} | جاهز للرفع=${syncReady ? 'نعم' : 'لا'} | معلمون=${db.teachers.length} | غياب مسجّل=${db.log.length}`);
+  let remote = null;
+  if (url && code) {
+    try {
+      const r1 = await (await fetch(`${url}?action=school&s=${encodeURIComponent(code)}&_=${Date.now()}`, { cache: 'no-store' })).json();
+      add(!!r1.ok, r1.ok ? `الرابط صالح (${r1.name}) ${r1.active ? 'ومفعّل' : 'لكنه معطّل'}` : 'الخادم رفض الرابط: ' + (r1.error || '?'));
+    } catch (e) { add(false, 'تعذر الاتصال بالخادم (تأكد أن النشر «أي شخص» وأنه نسخة جديدة): ' + (e.message || e)); }
+    try {
+      const r2 = await (await fetch(`${url}?code=${encodeURIComponent(code)}&_=${Date.now()}`, { cache: 'no-store' })).json();
+      if (!r2.ok) add(false, 'فشل تحميل بيانات السحابة: ' + (r2.error || '?'));
+      else {
+        remote = r2;
+        let d = null; try { d = r2.data ? JSON.parse(r2.data) : null; } catch (e) {}
+        add(true, r2.data ? `السحابة فيها بيانات: إصدار ${r2.rev} | معلمون=${d ? d.teachers.length : '?'} | غياب مسجّل=${d ? d.log.length : '?'} | آخر حفظ=${r2.updatedAt ? new Date(r2.updatedAt).toLocaleString('ar-OM') : '—'}` : 'السحابة فارغة (لم يُرفع شيء بعد)');
+        if (r2.rev === undefined) add(false, 'الخادم لا يرجع رقم الإصدار: نسخة Apps Script قديمة — انشر نسخة جديدة من Code.gs');
+      }
+    } catch (e) { add(false, 'تعذر قراءة السحابة: ' + (e.message || e)); }
+    try {
+      const r3 = await (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'ownerSchools', pin: '' }) })).json();
+      add(r3.error === 'رمز المالك غير صحيح', r3.error === 'رمز المالك غير صحيح' ? 'اختبار POST للخادم يعمل (النسخة المنشورة حديثة)' : 'استجابة POST غير متوقعة: ' + JSON.stringify(r3).slice(0, 120));
+    } catch (e) { add(false, 'فشل طلب POST للخادم: ' + (e.message || e)); }
+  }
+  show(`<div class="mt-4 flex flex-wrap gap-2">
+    <button onclick="syncForce('up')" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold">⬆️ فرض رفع نسخة هذا الجهاز للسحابة</button>
+    <button onclick="syncForce('down')" class="flex-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-sm font-semibold">⬇️ فرض تحميل نسخة السحابة</button></div>
+    <p class="text-[11px] text-slate-500 mt-2">«فرض الرفع» يجعل ما في هذا الجهاز هو النسخة المعتمدة للجميع، و«فرض التحميل» يستبدل ما في هذا الجهاز بنسخة السحابة (تُحفظ نسخة احتياطية محلية قبل ذلك).</p>`);
+}
+async function syncForce(dir) {
+  const url = cloudEndpoint(), code = getSyncCode();
+  try {
+    const r = await (await fetch(`${url}?code=${encodeURIComponent(code)}&_=${Date.now()}`, { cache: 'no-store' })).json();
+    if (!r.ok) throw new Error(r.error || 'load');
+    if (dir === 'down') {
+      if (!r.data) { App.alert('السحابة فارغة.'); return; }
+      adoptRemote({ data: r.data, rev: r.rev, updatedAt: r.updatedAt }, false); setDirty(false); syncReady = true;
+    } else {
+      setRev(r.rev || 0); syncReady = true; db.updatedAt = Date.now(); localStorage.setItem('schoolReserveDB', JSON.stringify(db)); setDirty(true);
+      await pushCloud();
+    }
+    App.closeM(); App.alert(dir === 'down' ? 'تم تحميل نسخة السحابة.' : (lastSyncErr ? 'فشل الرفع: ' + lastSyncErr : 'تم رفع نسخة هذا الجهاز إلى السحابة.'));
+  } catch (e) { App.alert('فشلت العملية: ' + (e.message || e)); }
 }
 // عند ترك الصفحة (تبديل التطبيق في الهاتف) نرفع فورًا ما لم يُرفع
 function flushOnLeave() { if (document.hidden && cloudEndpoint() && isDirty() && syncReady) { clearTimeout(syncTimer); pushCloud(); } }
