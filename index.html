@@ -86,6 +86,8 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
         <span id="syncLabel">💾 حفظ محلي (المزامنة غير مفعلة)</span>
         <span id="syncDot" class="w-2 h-2 rounded-full bg-slate-500 animate-pulse"></span>
       </div>
+      <div id="syncDetail" class="text-[10px] text-slate-500 -mt-2"></div>
+      <button id="syncNowBtn" onclick="syncNow()" class="w-full bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-200 p-2.5 rounded-xl text-xs font-semibold transition-all">🔄 مزامنة الآن</button>
       <button id="syncSettingsBtn" onclick="App.openSyncSettings()" class="w-full bg-white/10 hover:bg-white/15 text-white p-2.5 rounded-xl text-xs font-semibold transition-all">☁️ المزامنة الأونلاين</button>
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
         <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
@@ -215,7 +217,13 @@ const cloudEndpoint = () => {
   if (!u || !c) return null;
   return isScriptUrl(u) ? u : `${u}/schools/${encodeURIComponent(c)}.json`;
 };
-function setSyncStatus(kind) {
+let lastSyncAt = 0, lastSyncErr = '';
+function setSyncStatus(kind, detail) {
+  if (kind === 'ok') { lastSyncAt = Date.now(); lastSyncErr = ''; }
+  if (kind === 'error') lastSyncErr = detail || lastSyncErr || '';
+  const dd = document.getElementById('syncDetail');
+  if (dd) dd.textContent = kind === 'error' ? ('السبب: ' + (lastSyncErr || 'غير معروف') + (isDirty() ? ' — التعديلات محفوظة على الجهاز وسيُعاد الرفع تلقائيًا' : ''))
+    : (lastSyncAt && kind === 'ok' ? 'آخر مزامنة: ' + new Date(lastSyncAt).toLocaleTimeString('ar-OM', { hour: '2-digit', minute: '2-digit' }) + (isDirty() ? ' — تعديلات بانتظار الرفع' : '') : '');
   const map = {
     local:   ['💾 حفظ محلي (المزامنة غير مفعلة)', 'bg-slate-500'],
     syncing: ['⏳ جارٍ الحفظ أونلاين...', 'bg-amber-400'],
@@ -273,7 +281,7 @@ function adoptRemote(remote, merge) {
 async function pushCloud(attempt = 0) {
   const url = cloudEndpoint();
   if (!url) { setSyncStatus('local'); return; }
-  if (isScriptUrl(url) && !syncReady) return;          // لا نرفع قبل أول قراءة ناجحة من السحابة (يمنع كتابة نسخة فارغة/قديمة فوق الأرشيف)
+  if (isScriptUrl(url) && !syncReady) { setSyncStatus('syncing'); pullCloud(); return; }   // لا نرفع قبل أول قراءة ناجحة من السحابة؛ نحاول القراءة الآن ثم يُرفع تلقائيًا
   if (pushBusy) { pushAgain = true; return; }
   pushBusy = true; setSyncStatus('syncing');
   try {
@@ -290,7 +298,7 @@ async function pushCloud(attempt = 0) {
         adoptRemote({ data: j.data, rev: j.rev, updatedAt: j.updatedAt }, true);
         pushBusy = false; return pushCloud(attempt + 1);
       }
-      if (!j.ok) throw new Error(j.error || 'denied');
+      if (!j.ok) throw new Error(j.error === 'disabled' ? 'الرابط معطّل' : j.error === 'not_found' ? 'الرابط غير صالح' : (j.error || 'denied'));
       if (Number.isFinite(Number(j.rev))) setRev(j.rev);
       if ((db.updatedAt || 0) === sentAt) setDirty(false);
     } else {
@@ -298,7 +306,10 @@ async function pushCloud(attempt = 0) {
       if (!r.ok) throw new Error(r.status);
     }
     setSyncStatus('ok');
-  } catch (e) { setSyncStatus('error'); }
+  } catch (e) {
+    setSyncStatus('error', String(e && e.message || e));
+    if (isDirty()) { clearTimeout(window._retryT); window._retryT = setTimeout(pushCloud, 5000); }   // إعادة المحاولة بعد 5 ثوانٍ
+  }
   finally {
     pushBusy = false;
     if (pushAgain) { pushAgain = false; setTimeout(pushCloud, 300); }
@@ -343,9 +354,24 @@ async function pullCloud() {
     } else if ((remote.updatedAt || 0) < (db.updatedAt || 0)) {
       await pushCloud();
     } else setSyncStatus('ok');
-  } catch (e) { setSyncStatus('error'); }
+  } catch (e) { setSyncStatus('error', String(e && e.message || e)); }
   finally { syncBusy = false; }
 }
+// مزامنة فورية يدويًا: يقرأ من السحابة ثم يرفع أي تعديل معلّق
+async function syncNow() {
+  const b = document.getElementById('syncNowBtn');
+  if (b) { b.disabled = true; b.textContent = '⏳ جارٍ المزامنة...'; }
+  try {
+    if (!cloudEndpoint()) { setSyncStatus('local'); return; }
+    syncBusy = false; syncReady = false; setSyncStatus('syncing');
+    await pullCloud();
+    if (isDirty()) await pushCloud();
+  } finally { if (b) { b.disabled = false; b.textContent = '🔄 مزامنة الآن'; } }
+}
+// عند ترك الصفحة (تبديل التطبيق في الهاتف) نرفع فورًا ما لم يُرفع
+function flushOnLeave() { if (document.hidden && cloudEndpoint() && isDirty() && syncReady) { clearTimeout(syncTimer); pushCloud(); } }
+document.addEventListener('visibilitychange', flushOnLeave);
+window.addEventListener('pagehide', () => { if (cloudEndpoint() && isDirty() && syncReady) pushCloud(); });
 
 // ===== رافد: بوابة الرابط + رصيد الرسائل (الخصم من الخادم) =====
 const rafidMode = () => !!(RAFID_API_URL && isScriptUrl(RAFID_API_URL));
@@ -440,7 +466,7 @@ const save = () => {
   db.updatedAt = Date.now();
   localStorage.setItem('schoolReserveDB', JSON.stringify(db));
   setDirty(true);
-  if (cloudEndpoint()) { clearTimeout(syncTimer); syncTimer = setTimeout(pushCloud, 1000); }
+  if (cloudEndpoint()) { clearTimeout(syncTimer); syncTimer = setTimeout(pushCloud, 300); }
 };
 const key = (id, d, p) => id + '|' + d + '|' + p;
 const freeKey = (id, d, p) => id + '|' + d + '|' + p;
