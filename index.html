@@ -264,13 +264,57 @@ function mergeDbs(local, remote) {
   if (!(out.teachers || []).length && (remote.teachers || []).length) return JSON.parse(JSON.stringify(remote));
   return out;
 }
+// ===== دمج ثلاثي: النسخة المحلية + السحابية + آخر نسخة متزامنة (الأساس) =====
+// كل ما عدّله هذا الجهاز منذ آخر مزامنة يبقى، وكل ما عدّله جهاز آخر يصل إلى هذا الجهاز؛ فلا يلغي جهاز قديم تعديلات غيره.
+const getBase = () => { try { const b = localStorage.getItem('schoolSyncBase'); return b ? JSON.parse(b) : null; } catch (e) { return null; } };
+const setBase = str => { try { localStorage.setItem('schoolSyncBase', typeof str === 'string' ? str : JSON.stringify(str)); } catch (e) {} };
+function merge3(base, local, remote) {
+  const J = v => JSON.stringify(v === undefined ? null : v);
+  const clone = v => JSON.parse(JSON.stringify(v));
+  const out = clone(remote);
+  const MAPS = ['s', 'free', 'cnt', 'waSentLog'], SPECIAL = new Set(['teachers', 'log', ...MAPS]);
+  Object.keys(local).forEach(k => { if (!SPECIAL.has(k) && J(local[k]) !== J(base[k])) out[k] = clone(local[k]); });
+  MAPS.forEach(m => {
+    out[m] = out[m] || {};
+    const L = local[m] || {}, B = base[m] || {}, R = remote[m] || {};
+    new Set([...Object.keys(L), ...Object.keys(B)]).forEach(k => {
+      if (J(L[k]) === J(B[k])) return;                       // لم يعدّله هذا الجهاز: نأخذ السحابة
+      if (L[k] === undefined) { delete out[m][k]; return; }  // حذفه هذا الجهاز
+      if (m === 'cnt' && typeof L[k] === 'number' && typeof R[k] === 'number' && J(R[k]) !== J(B[k])) out[m][k] = Math.max(0, R[k] + L[k] - (B[k] || 0));
+      else out[m][k] = clone(L[k]);
+    });
+  });
+  // المعلمون: بالمعرّف، مع منع تكرار الاسم
+  const norm = n => String(n || '').replace(/\s+/g, ' ').trim();
+  const bT = new Map((base.teachers || []).map(t => [String(t.id), t])), lT = new Map((local.teachers || []).map(t => [String(t.id), t]));
+  let teachers = (remote.teachers || []).filter(t => !(bT.has(String(t.id)) && !lT.has(String(t.id))));   // حذفه هذا الجهاز
+  const idx = new Map(teachers.map((t, i) => [String(t.id), i]));
+  (local.teachers || []).forEach(t => {
+    const id = String(t.id), b = bT.get(id);
+    if (idx.has(id)) { if (!b || J(t) !== J(b)) teachers[idx.get(id)] = clone(t); return; }
+    if (b) return;                                              // حذفه جهاز آخر
+    if (teachers.some(x => norm(x.name) === norm(t.name))) return;
+    teachers.push(clone(t));
+  });
+  out.teachers = teachers;
+  // الأرشيف: اتحاد الطرفين، مع احترام ما حُذف محليًا
+  const rk = x => `${x.date}|${x.period}|${x.absent}`;
+  const bL = new Set((base.log || []).map(rk)), lL = new Set((local.log || []).map(rk));
+  const log = (remote.log || []).filter(x => !(bL.has(rk(x)) && !lL.has(rk(x))));
+  const have = new Set(log.map(rk));
+  (local.log || []).forEach(x => { if (!have.has(rk(x))) { log.push(clone(x)); have.add(rk(x)); } else if (!bL.has(rk(x))) { log[log.findIndex(y => rk(y) === rk(x))] = clone(x); } });
+  out.log = log;
+  return out;
+}
 function backupLocalDb(tag) { try { localStorage.setItem('schoolReserveDB_backup', JSON.stringify({ tag, at: Date.now(), db })); } catch (e) {} }
 function adoptRemote(remote, merge) {
   const rdb = JSON.parse(remote.data);
   // لا نستبدل جدولًا محليًا فيه حصص بنسخة سحابية بلا حصص: ندمجهما بدل ذلك
   if (!merge && Object.keys(db.s || {}).length && !Object.keys(rdb.s || {}).length) merge = true;
   backupLocalDb(merge ? 'before-merge' : 'before-replace');
-  db = merge ? mergeDbs(db, rdb) : rdb;
+  const base = getBase();
+  db = merge ? (base ? merge3(base, db, rdb) : mergeDbs(db, rdb)) : rdb;
+  setBase(remote.data);
   normalizeDb();
   db.updatedAt = merge ? Date.now() : (remote.updatedAt || Date.now());
   localStorage.setItem('schoolReserveDB', JSON.stringify(db));
@@ -302,6 +346,7 @@ async function pushCloud(attempt = 0) {
       }
       if (!j.ok) throw new Error(j.error === 'disabled' ? 'الرابط معطّل' : j.error === 'not_found' ? 'الرابط غير صالح' : (j.error || 'denied'));
       if (Number.isFinite(Number(j.rev))) setRev(j.rev);
+      setBase(payload.data);
       if ((db.updatedAt || 0) === sentAt) setDirty(false);
     } else {
       const r = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -373,6 +418,7 @@ async function syncNow() {
 // عند ترك الصفحة (تبديل التطبيق في الهاتف) نرفع فورًا ما لم يُرفع
 function flushOnLeave() { if (document.hidden && cloudEndpoint() && isDirty() && syncReady) { clearTimeout(syncTimer); pushCloud(); } }
 document.addEventListener('visibilitychange', flushOnLeave);
+window.addEventListener('focus', () => { if (cloudEndpoint() && syncReady) pullCloud(); });
 window.addEventListener('pagehide', () => { if (cloudEndpoint() && isDirty() && syncReady) pushCloud(); });
 
 // ===== رافد: بوابة الرابط + رصيد الرسائل (الخصم من الخادم) =====
@@ -1250,7 +1296,7 @@ const App = {
                     const f = isFreed(id, d, p);
                     return `<td class="p-1 border-l border-slate-100 align-top ${f ? 'bg-amber-50/80' : ''}">
                       <button onclick="App.editCellInModal(${id},'${d}',${p})" class="w-full min-w-[70px] min-h-[46px] rounded-lg p-1 hover:bg-emerald-50 text-center">
-                        ${l.sub ? `<div class="font-bold text-slate-800 line-clamp-2">${esc(l.sub)}</div><div class="text-[10px] text-slate-500">${esc(l.cl)}</div>${f ? '<div class="text-[9px] text-amber-700 font-bold">مفرغ</div>' : ''}` : '<span class="text-emerald-600 text-lg">+</span>'}
+                        ${l.sub ? `<div class="font-bold text-slate-800 line-clamp-2">${esc(l.sub)}</div><div class="text-[10px] text-slate-500">${esc(l.cl || l.cls || '')}</div>${f ? '<div class="text-[9px] text-amber-700 font-bold">مفرغ</div>' : ''}` : '<span class="text-emerald-600 text-lg">+</span>'}
                       </button>
                     </td>`;
                   }).join('')}
@@ -2374,7 +2420,7 @@ const App = {
                 <td class="p-3 text-slate-600">${esc(x.day)}</td>
                 <td class="p-3 text-center font-bold text-slate-700">${x.period}</td>
                 <td class="p-3 text-slate-700">${esc(x.sub)}</td>
-                <td class="p-3 text-slate-600">${esc(x.cl)}</td>
+                <td class="p-3 text-slate-600">${esc(x.cl || x.cls || '')}</td>
               </tr>
             `).join('')}
           </tbody>
