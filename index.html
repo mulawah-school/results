@@ -600,6 +600,7 @@ const printDayName = d => d === 'الاثنين' ? 'الإثنين' : d;
 const PERIOD_ORDINALS = ['الأولى', 'الثانية', 'الثالثة', 'الرابعة', 'الخامسة', 'السادسة', 'السابعة', 'الثامنة'];
 // قواعد الاحتياط
 const BREAK_AFTER_PERIOD = 4;   // الفسحة بعد الحصة الرابعة
+const MAX_RESERVES_PER_DAY = 1;
 const MAX_DAILY_LOAD = 5;       // من لديه 5 حصص في اليوم يُستبعد من الاحتياط
 const WEEKLY_LAST_PERIOD_LIMIT = 3; // من لديه 3 حصص (فأكثر) في الحصة الثامنة خلال الأسبوع لا يُعطى الحصة الثامنة احتياطًا
 const WEEKLY_RESERVE_LAST_PERIOD_MAX = 1; // لا يُسنَد للمعلم احتياط في الحصة الثامنة أكثر من مرة واحدة في الأسبوع
@@ -2792,7 +2793,7 @@ const App = {
                 const sentAlready = subT && this.waAlreadySent(subT.id, iso, r.period);
                 return `<div class="flex items-center justify-between gap-2 text-xs text-slate-600 py-0.5">
                   <span>الحصة ${r.period} — ${esc(r.subject)}${r.className ? ' (' + esc(r.className) + ')' : ''} ← <b class="text-indigo-700">${esc(r.substitute)}</b></span>
-                  ${waConfigured() ? (sentAlready
+                  ${true ? (sentAlready
                     ? `<span class="text-slate-400 shrink-0">✓ أُرسلت</span>`
                     : `<button onclick="App.waSendRowRegistered('${iso}', ${esc(JSON.stringify(r.substitute))}, ${r.period}, ${esc(JSON.stringify(r.className || ''))})" class="shrink-0 bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-100 px-2 py-0.5 rounded-lg font-semibold">📲</button>`
                   ) : ''}
@@ -3197,6 +3198,9 @@ const App = {
                           `;
                         }).join('')}
                       </select>
+                      ${selectedT && !r.selfManaged ? (this.waAlreadySent(selectedT.id, r.date, r.period)
+                        ? `<span title="لن تُرسَل رسالة أخرى لنفس اليوم والحصة" class="bg-slate-100 text-slate-500 px-2 py-2 rounded-xl text-[11px] font-semibold">✓ أُرسلت واتساب</span>`
+                        : `<button onclick="App.waSendRowDraft(${selectedT.id}, ${rowIndex})" title="إرسال واتساب إلى ${esc(selectedT.name)}" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap">📲 إرسال واتساب</button>`) : ''}
                     </div>
                   </div>
 
@@ -3210,7 +3214,7 @@ const App = {
                       </div>
                       <span class="flex items-center gap-2">
                         <span class="text-emerald-700 font-bold">✓ تم الإسناد</span>
-                        ${waConfigured() ? (this.waAlreadySent(selectedT.id, r.date, r.period)
+                        ${true ? (this.waAlreadySent(selectedT.id, r.date, r.period)
                           ? `<span title="لن تُرسَل رسالة أخرى لنفس اليوم والحصة" class="bg-slate-100 text-slate-500 px-2 py-1 rounded-lg text-[11px] font-semibold">✓ أُرسلت واتساب</span>`
                           : `<button onclick="App.waSendRowDraft(${selectedT.id}, ${rowIndex})" title="إرسال واتساب للمعلم البديل" class="bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-100 px-2 py-1 rounded-lg text-[11px] font-semibold">📲 واتساب</button>`
                         ) : ''}
@@ -3272,6 +3276,10 @@ const App = {
     const p = row.period;
     if (busy.has(p)) return false;                                   // مشغول في هذه الحصة (حصة فعلية أو احتياط معتمد سابقًا)
     if (busy.size >= MAX_DAILY_LOAD) return false;
+    // لا يأخذ المعلم أكثر من حصة احتياط واحدة في اليوم (المعتمد سابقًا + المسودة الحالية)
+    const sameDay = (db.log || []).filter(x => x.date === row.date && x.substitute === t.name).length
+      + (window.currentPreviewItems || []).filter(x => x !== row && x.date === row.date && x.selectedTeacherId == t.id).length;
+    if (sameDay >= MAX_RESERVES_PER_DAY) return false;
     if (p === PERIODS.length) {
       const lastPeriodLessons = DAYS.filter(d => {
         const l = lesson(t.id, d, PERIODS.length);
