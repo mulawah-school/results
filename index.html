@@ -3193,7 +3193,7 @@ const App = {
                           const pct = sc.quota > 0 ? Math.round((sc.assigned / sc.quota) * 100) : 100;
                           return `
                             <option value="${sc.teacher.id}" ${!r.selfManaged && sc.teacher.id == r.selectedTeacherId ? 'selected' : ''}>
-                              ${esc(sc.teacher.name)} (${sc.assigned}/${sc.quota} - ${pct}%)${sc.workedPrevDay ? ' ⚠ يومان متتاليان' : ''}
+                              ${esc(sc.teacher.name)} (${sc.assigned}/${sc.quota} - ${pct}%)${sc.runViol ? ' ⚠ حصص متتالية' : ''}${sc.workedPrevDay ? ' ⚠ يومان متتاليان' : ''}
                             </option>
                           `;
                         }).join('')}
@@ -3209,7 +3209,7 @@ const App = {
                       <div>
                         <span>البديل الحالي: </span>
                         <strong class="text-emerald-900">${esc(selectedT.name)}</strong>
-                        ${(r.scoredList || []).some(c => c.teacher.id == selectedT.id && c.workedPrevDay) ? '<span class="bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full text-[11px] font-bold mr-2">⚠ يومان متتاليان (اختيار يدوي)</span>' : ''}
+                        ${(r.scoredList || []).some(c => c.teacher.id == selectedT.id && c.runViol) ? '<span class="bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full text-[11px] font-bold mr-2">⚠ حصص متتالية</span>' : ''}${(r.scoredList || []).some(c => c.teacher.id == selectedT.id && c.workedPrevDay) ? '<span class="bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full text-[11px] font-bold mr-2">⚠ يومان متتاليان (اختيار يدوي)</span>' : ''}
                         <span class="bg-white px-2 py-0.5 rounded-full border border-emerald-200 font-bold text-emerald-700 mr-2">${db.cnt[selectedT.id]||0}/${quotaOf(selectedT)} (${pctOf(selectedT)}%)</span>
                       </div>
                       <span class="flex items-center gap-2">
@@ -3292,20 +3292,27 @@ const App = {
       reserves8 += (window.currentPreviewItems || []).filter(x => x !== row && x.selectedTeacherId == t.id && +x.period === PERIODS.length && weekStartISO(x.date) === wk).length;
       if (reserves8 >= WEEKLY_RESERVE_LAST_PERIOD_MAX) return false;
     }
-    // الحصتان الرابعة والخامسة تُعدّان متتاليتين (الفسحة لا تقطع التسلسل) فيسري الحد على كل الحصص
-    const lo = 1, hi = PERIODS.length;
+    // تتالي الحصص صار شرطًا مرنًا (بقدر المستطاع) يُحسب في الترتيب عبر consecutiveRun وليس منعًا
+    return true;
+  },
+
+  // طول سلسلة الحصص المتتالية لو أُسندت هذه الحصة للمعلم (الحصتان الرابعة والخامسة متتاليتان؛ الفسحة لا تقطع التسلسل)
+  consecutiveRun(t, row) {
+    const busy = this.teacherBusyPeriods(t, row);
+    const p = row.period, lo = 1, hi = PERIODS.length;
     let run = 1;
     for (let q = p - 1; q >= lo && busy.has(q); q--) run++;
     for (let q = p + 1; q <= hi && busy.has(q); q++) run++;
-    return run <= MAX_CONSECUTIVE;
+    return run;
   },
 
   // ترتيب المرشحين: 1) عدم التتالي  2) العدالة: الأقل نسبة إشغال (من أخذ نسبته يُؤخَّر ويُقدَّم من نسبته أقل أو 0%)
   // 3) الأقل حصصًا في ذلك اليوم (حصصه الفعلية + الاحتياط الموزع له)  4) الأقل عددًا في حصص الاحتياط
   // 5) الأبعد عهدًا بآخر احتياط  6) الاسم
   compareCandidates(a, b) {
-    if (a.workedPrevDay !== b.workedPrevDay) return a.workedPrevDay ? 1 : -1;
-    if (a.pct !== b.pct) return a.pct - b.pct;
+    if (a.pct !== b.pct) return a.pct - b.pct;                                   // 1) العدالة (الأقل نسبة)
+    if (a.runViol !== b.runViol) return a.runViol ? 1 : -1;                      // 2) تجنّب من معه حصتان متتاليتان (بقدر المستطاع)
+    if (a.workedPrevDay !== b.workedPrevDay) return a.workedPrevDay ? 1 : -1;    // 3) تجنّب يومين متتاليين (بقدر المستطاع)
     if (a.load !== b.load) return a.load - b.load;
     if (a.assigned !== b.assigned) return a.assigned - b.assigned;
     if (a.lastDate !== b.lastDate) return a.lastDate < b.lastDate ? -1 : 1;
@@ -3326,6 +3333,7 @@ const App = {
 
     const lastDate = (db.log || []).reduce((m, x) => (x.substitute === t.name && x.date > m ? x.date : m), '');
     const load = this.teacherBusyPeriods(t, row).size;
+    const run = this.consecutiveRun(t, row);
     return {
       teacher:t,
       lastDate,
@@ -3335,6 +3343,8 @@ const App = {
       deficit,
       draft,
       pct,
+      run,
+      runViol: run > MAX_CONSECUTIVE,
       workedPrevDay
     };
   },
@@ -3372,8 +3382,8 @@ const App = {
           .sort((a,b) => this.compareCandidates(a,b));
 
         row.scoredList = candidates;
-        // التوزيع الآلي لا يُسند معلمًا أخذ احتياطًا في يوم متتالٍ؛ يبقى ظاهرًا في القائمة للاختيار اليدوي مع تنبيه
-        const auto = candidates.find(c => !c.workedPrevDay);
+        // الترتيب: 1) العدالة 2) تجنّب حصتين متتاليتين 3) تجنّب يومين متتاليين — كلها بقدر المستطاع، فيُسنَد أفضل مرشح متاح
+        const auto = candidates[0];
         if (auto) {
           row.selectedTeacherId = auto.teacher.id;
           row.status = 'تم التوزيع';
