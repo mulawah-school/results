@@ -92,7 +92,7 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
         <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
         <div dir="ltr">📞 98986817</div>
-        <div class="text-slate-600" dir="ltr">v 2026.10.21-a</div>
+        <div class="text-slate-600" dir="ltr">v 2026.10.21-b</div>
       </div>
     </div>
   </aside>
@@ -146,25 +146,21 @@ const defaultTeachers = [];
 // ===== رافد: ربط المدرسة بالخلفية السحابية =====
 // ضع هنا رابط Web App الخاص بخلفية رافد (Code.gs الجديد). إن تُرك فارغًا يعمل البرنامج محليًا كما كان.
 const RAFID_API_URL = 'https://script.google.com/macros/s/AKfycbzgmhNSqLGjoQ1Br9qEgs-NBCtjx5j4U6PvJ1YzdmI9IjiL2BiytImw89GK9Mc7vIgEJg/exec';
-// إن فُتح رابط مدرسة مختلفة على نفس المتصفح تُمسح البيانات المحلية القديمة حتى لا تختلط بين مدرستين.
-(function rafidSwitchGuard() {
+// استقلالية كل مدرسة: كل مفاتيح بيانات المدرسة تُحفظ في المتصفح تحت اسم يحمل رمز رابطها،
+// فلا يمكن أن تختلط بيانات رابطين على نفس المتصفح مهما تبدّلت الروابط. الرابط الجديد يبدأ دائمًا فارغًا.
+// (بدون رمز في الرابط تُستعمل المفاتيح الأصلية كما كانت: بيانات النسخة المحلية القديمة لا تُلمس.)
+(function rafidScopeStorage() {
   try {
     const q = new URLSearchParams((location.hash || '').replace(/^#/, '') || location.search);
-    const c = (q.get('s') || '').trim(), old = localStorage.getItem('schoolSyncCode') || '';
-    // متصفح فيه بيانات محلية قديمة بلا رمز مدرسة (مثل بيانات مدرسة المصمّم) ثم فُتح رابط مدرسة جديدة: لا تُنقل البيانات للمدرسة الجديدة
-    let legacy = false;
-    if (c && !old) {
-      try { const d0 = JSON.parse(localStorage.getItem('schoolReserveDB') || 'null'); legacy = !!(d0 && ((d0.teachers || []).length || (d0.log || []).length || Object.keys(d0.s || {}).length)); } catch (e) {}
-    }
-    if (c && ((old && c !== old) || legacy)) {
-      const oldKey = old || '__nocode';
-      const keys = ['schoolReserveDB', 'waToken', 'waPhoneId', 'schoolSyncRev', 'schoolSyncDirty', 'schoolSyncBase', 'schoolSyncEpoch'];
-      const stash = {}; keys.forEach(k => { const v = localStorage.getItem(k); if (v !== null) stash[k] = v; });
-      try { localStorage.setItem('rafidStash:' + oldKey, JSON.stringify(stash)); } catch (e) {}   // نحتفظ بنسخة المدرسة السابقة ولا نحذفها
-      keys.concat(['rafidInfo', 'schoolReserveDB_backup']).forEach(k => localStorage.removeItem(k));
-      const back = localStorage.getItem('rafidStash:' + c);                                    // وإن سبق فتح الرابط الجديد هنا نستعيد بياناته
-      if (back) { const o = JSON.parse(back); Object.keys(o).forEach(k => localStorage.setItem(k, o[k])); }
-    }
+    const code = ((q.get('s') || '').trim() || (localStorage.getItem('schoolSyncCode') || '').trim()).replace(/[^A-Za-z0-9_-]/g, '');
+    window.RAFID_SCOPE = code;
+    if (!code) return;
+    const SCOPED = new Set(['schoolReserveDB', 'schoolReserveDB_backup', 'schoolSyncRev', 'schoolSyncDirty', 'schoolSyncBase', 'schoolSyncEpoch', 'rafidInfo', 'waToken', 'waPhoneId']);
+    const P = Storage.prototype, g = P.getItem, st = P.setItem, rm = P.removeItem;
+    const k = (self, key) => (self === window.localStorage && SCOPED.has(key)) ? key + '@' + code : key;
+    P.getItem = function (key) { return g.call(this, k(this, key)); };
+    P.setItem = function (key, v) { return st.call(this, k(this, key), v); };
+    P.removeItem = function (key) { return rm.call(this, k(this, key)); };
   } catch (e) {}
 })();
 
