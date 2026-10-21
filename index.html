@@ -92,7 +92,7 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
         <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
         <div dir="ltr">📞 98986817</div>
-        <div class="text-slate-600" dir="ltr">v 2026.10.21-b</div>
+        <div class="text-slate-600" dir="ltr">v 2026.10.21-c</div>
       </div>
     </div>
   </aside>
@@ -152,7 +152,9 @@ const RAFID_API_URL = 'https://script.google.com/macros/s/AKfycbzgmhNSqLGjoQ1Br9
 (function rafidScopeStorage() {
   try {
     const q = new URLSearchParams((location.hash || '').replace(/^#/, '') || location.search);
-    const code = ((q.get('s') || '').trim() || (localStorage.getItem('schoolSyncCode') || '').trim()).replace(/[^A-Za-z0-9_-]/g, '');
+    // رمز هذه الصفحة يثبت عند فتحها؛ لا يتغير إذا فُتح رابط مدرسة أخرى في تبويب آخر
+    window.RAFID_CODE = (q.get('s') || '').trim() || (localStorage.getItem('schoolSyncCode') || '').trim();
+    const code = window.RAFID_CODE.replace(/[^A-Za-z0-9_-]/g, '');
     window.RAFID_SCOPE = code;
     if (!code) return;
     const SCOPED = new Set(['schoolReserveDB', 'schoolReserveDB_backup', 'schoolSyncRev', 'schoolSyncDirty', 'schoolSyncBase', 'schoolSyncEpoch', 'rafidInfo', 'waToken', 'waPhoneId']);
@@ -213,7 +215,7 @@ const FIREBASE_DB_URL_DEFAULT = '';
   } catch (e) {}
 })();
 const getSyncUrl = () => (RAFID_API_URL || localStorage.getItem('schoolSyncUrl') || FIREBASE_DB_URL_DEFAULT || '').trim().replace(/\/+$/, '');
-const getSyncCode = () => (localStorage.getItem('schoolSyncCode') || '').trim();
+const getSyncCode = () => (window.RAFID_CODE !== undefined ? window.RAFID_CODE : (localStorage.getItem('schoolSyncCode') || '')).trim();
 const isScriptUrl = u => /^https:\/\/script\.google\.com\//.test(u);
 const cloudEndpoint = () => {
   const u = getSyncUrl(), c = getSyncCode();
@@ -819,14 +821,14 @@ const App = {
     const u = ($('syncUrl').value || '').trim().replace(/\/+$/, ''), c = ($('syncCode').value || '').trim();
     if (!/^https:\/\/.+/.test(u) || c.length < 6) { this.alert('أدخل رابط قاعدة البيانات كاملًا ورمزًا من 6 أحرف على الأقل.'); return; }
     localStorage.setItem('schoolSyncUrl', u);
-    localStorage.setItem('schoolSyncCode', c);
+    localStorage.setItem('schoolSyncCode', c); window.RAFID_CODE = c;
     localStorage.removeItem('schoolSyncRev');
     this.closeM();
     await pullCloud();
   },
   disableSync() {
     localStorage.removeItem('schoolSyncUrl');
-    localStorage.removeItem('schoolSyncCode');
+    localStorage.removeItem('schoolSyncCode'); window.RAFID_CODE = '';
     this.closeM();
     setSyncStatus('local');
   },
