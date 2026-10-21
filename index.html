@@ -151,10 +151,16 @@ const RAFID_API_URL = 'https://script.google.com/macros/s/AKfycbzgmhNSqLGjoQ1Br9
   try {
     const q = new URLSearchParams((location.hash || '').replace(/^#/, '') || location.search);
     const c = (q.get('s') || '').trim(), old = localStorage.getItem('schoolSyncCode') || '';
-    if (c && old && c !== old) {
-      const keys = ['schoolReserveDB', 'waToken', 'waPhoneId', 'schoolSyncRev', 'schoolSyncDirty'];
+    // متصفح فيه بيانات محلية قديمة بلا رمز مدرسة (مثل بيانات مدرسة المصمّم) ثم فُتح رابط مدرسة جديدة: لا تُنقل البيانات للمدرسة الجديدة
+    let legacy = false;
+    if (c && !old) {
+      try { const d0 = JSON.parse(localStorage.getItem('schoolReserveDB') || 'null'); legacy = !!(d0 && ((d0.teachers || []).length || (d0.log || []).length || Object.keys(d0.s || {}).length)); } catch (e) {}
+    }
+    if (c && ((old && c !== old) || legacy)) {
+      const oldKey = old || '__nocode';
+      const keys = ['schoolReserveDB', 'waToken', 'waPhoneId', 'schoolSyncRev', 'schoolSyncDirty', 'schoolSyncBase'];
       const stash = {}; keys.forEach(k => { const v = localStorage.getItem(k); if (v !== null) stash[k] = v; });
-      try { localStorage.setItem('rafidStash:' + old, JSON.stringify(stash)); } catch (e) {}   // نحتفظ بنسخة المدرسة السابقة ولا نحذفها
+      try { localStorage.setItem('rafidStash:' + oldKey, JSON.stringify(stash)); } catch (e) {}   // نحتفظ بنسخة المدرسة السابقة ولا نحذفها
       keys.concat(['rafidInfo', 'schoolReserveDB_backup']).forEach(k => localStorage.removeItem(k));
       const back = localStorage.getItem('rafidStash:' + c);                                    // وإن سبق فتح الرابط الجديد هنا نستعيد بياناته
       if (back) { const o = JSON.parse(back); Object.keys(o).forEach(k => localStorage.setItem(k, o[k])); }
