@@ -92,7 +92,7 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
         <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
         <div dir="ltr">📞 98986817</div>
-        <div class="text-slate-600" dir="ltr">v 2026.10.22-a</div>
+        <div class="text-slate-600" dir="ltr">v 2026.10.22-b</div>
       </div>
     </div>
   </aside>
@@ -3218,6 +3218,9 @@ const App = {
               .sort((a,b) => this.compareCandidates(a,b));
 
               r.scoredList = candidates;
+              // كل المعلمين الفارغين في هذه الحصة وغير المرشَّحين تلقائيًا (استبعدتهم الشروط) - يظهرون في آخر القائمة مرتّبين من الأقل نسبة إلى الأعلى
+              const usedHere = new Set(rows.filter((x,i)=>i!==rowIndex && x.day===r.day && x.period===r.period && x.selectedTeacherId).map(x=>+x.selectedTeacherId));
+              const extras = this.getFreeNonCandidates(r, usedHere, new Set(candidates.map(c => +c.teacher.id)));
 
               return `
                 <div class="bg-slate-50/70 border border-slate-200 rounded-2xl p-4">
@@ -3239,6 +3242,8 @@ const App = {
                             </option>
                           `;
                         }).join('')}
+                        ${extras.length ? `<optgroup label="باقي الفارغين في هذه الحصة (استبعدهم التوزيع الآلي — الاختيار اليدوي)">${extras.map(x => `
+                            <option value="f${x.t.id}" ${!r.selfManaged && x.t.id == r.selectedTeacherId ? 'selected' : ''}>${esc(x.t.name)} (${db.cnt[x.t.id] || 0}/${quotaOf(x.t)} - ${pctOf(x.t)}%) — ${esc(x.reason)}</option>`).join('')}</optgroup>` : ''}
                       </select>
                       ${selectedT && !r.selfManaged ? (this.waAlreadySent(selectedT.id, r.date, r.period)
                         ? `<span title="لن تُرسَل رسالة أخرى لنفس اليوم والحصة" class="bg-slate-100 text-slate-500 px-2 py-2 rounded-xl text-[11px] font-semibold">✓ أُرسلت واتساب</span>`
@@ -3294,6 +3299,27 @@ const App = {
         return isFreed(t.id, row.day, row.period) || !(l.sub || l.cl);
       })
       .filter(t => this.reserveRulesOk(t, row));   // لا يُستبعد من بلغ حدّه: التوزيع مستمر طوال العام والعدالة تقدّم الأقل نسبة
+  },
+
+  // معلمون فارغون فعلًا في هذه الحصة لكن استبعدهم التوزيع الآلي بسبب الشروط؛ يُعاد معهم سبب الاستبعاد، مرتّبين من الأقل نسبة إلى الأعلى
+  getFreeNonCandidates(row, usedAtPeriod, candidateIds) {
+    const absentIds = new Set((window.currentPreviewItems || []).map(x => x.absentId));
+    const regAbsent = new Set((db.log || []).filter(x => x.date === row.date).map(x => x.absent));
+    return (db.teachers || [])
+      .filter(t => t.active !== false && !absentIds.has(+t.id) && !regAbsent.has(t.name) && !usedAtPeriod.has(+t.id) && !candidateIds.has(+t.id))
+      .filter(t => { const l = lesson(t.id, row.day, row.period); return isFreed(t.id, row.day, row.period) || !(l.sub || l.cl); })
+      .map(t => ({ t, reason: this.reserveBlockReason(t, row) || 'مستبعد' }))
+      .sort((a, b) => pctOf(a.t) - pctOf(b.t) || String(a.t.name).localeCompare(String(b.t.name), 'ar'));
+  },
+  reserveBlockReason(t, row) {
+    const busy = this.teacherBusyPeriods(t, row), p = row.period;
+    if (busy.has(p)) return 'مشغول في هذه الحصة';
+    if (busy.size >= MAX_DAILY_LOAD) return 'حصصه في اليوم مكتملة';
+    const sameDay = (db.log || []).filter(x => x.date === row.date && x.substitute === t.name).length
+      + (window.currentPreviewItems || []).filter(x => x !== row && x.date === row.date && x.selectedTeacherId == t.id).length;
+    if (sameDay >= MAX_RESERVES_PER_DAY) return 'أخذ احتياطًا في هذا اليوم';
+    if (p === PERIODS.length) return 'حدّ الحصة الأخيرة الأسبوعي';
+    return '';
   },
 
   // الحصص المشغولة للمعلم في يوم معيّن: حصصه الفعلية (غير المفرَّغة) + احتياطات موزعة له في نفس اليوم
@@ -3468,6 +3494,19 @@ const App = {
       return;
     }
     row.selfManaged = false;
+
+    if (String(teacherId).startsWith('f')) {            // اختيار يدوي من «باقي الفارغين»: يُسمح به بشرط أن يكون فارغًا فعلًا في هذه الحصة
+      const ftid = +String(teacherId).slice(1);
+      const ft = (db.teachers || []).find(t => +t.id === ftid);
+      const usedHere = new Set(rows.filter((x,i)=>i!==index && x.day===row.day && x.period===row.period && x.selectedTeacherId).map(x=>+x.selectedTeacherId));
+      const free = ft && ft.active !== false && !usedHere.has(ftid) && !this.teacherBusyPeriods(ft, row).has(row.period);
+      if (!free) { this.alert('هذا المعلم غير فارغ في هذه الحصة.'); this.renderAbsenceDraft(); return; }
+      row.selectedTeacherId = ftid;
+      row.status = 'تم التوزيع';
+      this.renderAbsenceDraft();
+      this.saveAbsDraft();
+      return;
+    }
 
     const tid = +teacherId;
     const candidate = this.getAbsenceCandidates(row, new Set(
