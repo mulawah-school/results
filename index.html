@@ -92,7 +92,7 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
         <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
         <div dir="ltr">📞 98986817</div>
-        <div class="text-slate-600" dir="ltr">v 2026.10.21-c</div>
+        <div class="text-slate-600" dir="ltr">v 2026.10.22-a</div>
       </div>
     </div>
   </aside>
@@ -137,7 +137,8 @@ const esc = x => String(x ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt
 const WA_TEMPLATE_NAME = 'substitute_period_notification';
 const WA_LANG = 'ar';
 const WA_COUNTRY = '968';
-const waGet = k => localStorage.getItem(k) || '';
+// إعدادات واتساب تُحفظ مع بيانات المدرسة في السحابة (db.wa) فتظهر لكل من يفتح رابط المدرسة؛ والمفاتيح المحلية القديمة تُنقل تلقائيًا
+const waGet = k => { try { const w = (typeof db !== 'undefined' && db && db.wa) || null; if (w) return (k === 'waToken' ? w.token : w.phoneId) || ''; } catch (e) {} return localStorage.getItem(k) || ''; };
 const waConfigured = () => !!(waGet('waToken') && waGet('waPhoneId'));
 const waMask = v => v ? ('•'.repeat(Math.max(0, v.length - 4)) + v.slice(-4)) : '';
 
@@ -196,6 +197,11 @@ function normalizeDb() {
   }
 
   db.teachers.forEach(t => { if (t.quota == null) t.quota = 3; if (db.cnt[t.id] == null) db.cnt[t.id] = 0; });
+  // نقل إعدادات واتساب المحفوظة محليًا إلى بيانات المدرسة (مرة واحدة) لتُزامَن
+  try {
+    const lt = localStorage.getItem('waToken'), lp = localStorage.getItem('waPhoneId');
+    if (db.wa === undefined && lt && lp) { db.wa = { token: lt, phoneId: lp }; window._waMigrated = true; }
+  } catch (e) {}
 
 }
 normalizeDb();
@@ -266,6 +272,7 @@ function mergeDbs(local, remote) {
     out.teachers.push(t); out.cnt[t.id] = Math.max(out.cnt[t.id] || 0, (remote.cnt || {})[t.id] || 0);
   });
   out.waSentLog = Object.assign({}, remote.waSentLog || {}, out.waSentLog || {});
+  if (!out.wa && remote.wa) out.wa = remote.wa;
   if (!(out.teachers || []).length && (remote.teachers || []).length) return JSON.parse(JSON.stringify(remote));
   return out;
 }
@@ -563,6 +570,7 @@ async function rafidCheck() {
     if (!j.active) { rafidGate('disabled'); return false; }
     // اسم المدرسة من لوحة المالك إذا لم يحدد المستخدم اسمًا بنفسه
     applySchoolName(j.name);
+    if (window._waMigrated) { window._waMigrated = false; try { save(); } catch (e) {} }
     rafidUngate();
     return true;
   } catch (e) {
@@ -867,7 +875,7 @@ const App = {
         <p class="text-xs text-slate-500 leading-relaxed">تُستخدم لإرسال رسالة واتساب تلقائية للمعلم البديل عند إسناد حصة احتياط له. تُحفظ في هذا الجهاز فقط ولا تُشارك مع المزامنة الأونلاين.</p>
         ${configured ? `
           <div class="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-sm">
-            <div class="font-bold text-emerald-900 mb-1">✅ واتساب مفعّل على هذا الجهاز</div>
+            <div class="font-bold text-emerald-900 mb-1">✅ واتساب مفعّل لهذه المدرسة (يظهر لكل من يفتح رابطها)</div>
             <div class="text-emerald-800">Token: <span dir="ltr">${esc(waMask(token))}</span></div>
             <div class="text-emerald-800">Phone Number ID: <span dir="ltr">${esc(waMask(phoneId))}</span></div>
           </div>
@@ -891,15 +899,18 @@ const App = {
     const token = $('waTokenInput')?.value.trim();
     const phoneId = $('waPhoneIdInput')?.value.trim();
     if (!token || !phoneId) { this.alert('الرجاء تعبئة Token و Phone Number ID.'); return; }
-    localStorage.setItem('waToken', token);
-    localStorage.setItem('waPhoneId', phoneId);
+    db.wa = { token, phoneId };
+    ['waToken', 'waPhoneId'].forEach(k => localStorage.removeItem(k));
+    save();
     this.closeM();
     this.page(this._currentPage || 'home');
   },
 
   disableWhatsApp() {
-    this.confirm('هل تريد تعطيل واتساب؟ سيتم حذف Token و Phone Number ID المحفوظين في هذا الجهاز نهائيًا.', () => {
+    this.confirm('هل تريد تعطيل واتساب؟ سيتم حذف Token و Phone Number ID المحفوظين لهذه المدرسة نهائيًا، وسيتوقف الإرسال لكل من يفتح رابطها.', () => {
       ['waToken', 'waPhoneId'].forEach(k => localStorage.removeItem(k));
+      db.wa = null;
+      save();
       this.closeM();
       this.page(this._currentPage || 'home');
     }, 'تعطيل واتساب');
