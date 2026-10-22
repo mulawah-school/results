@@ -92,7 +92,7 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
         <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
         <div dir="ltr">📞 98986817</div>
-        <div class="text-slate-600" dir="ltr">v 2026.10.22-b</div>
+        <div class="text-slate-600" dir="ltr">v 2026.10.22-c</div>
       </div>
     </div>
   </aside>
@@ -639,6 +639,7 @@ const PERIOD_ORDINALS = ['الأولى', 'الثانية', 'الثالثة', 'ا
 // قواعد الاحتياط
 const BREAK_AFTER_PERIOD = 4;   // الفسحة بعد الحصة الرابعة
 const MAX_RESERVES_PER_DAY = 1;
+const TOOK_TODAY = 'أخذ احتياطًا في هذا اليوم';
 const MAX_DAILY_LOAD = 5;       // من لديه 5 حصص في اليوم يُستبعد من الاحتياط
 const WEEKLY_LAST_PERIOD_LIMIT = 3; // من لديه 3 حصص (فأكثر) في الحصة الثامنة خلال الأسبوع لا يُعطى الحصة الثامنة احتياطًا
 const WEEKLY_RESERVE_LAST_PERIOD_MAX = 1; // لا يُسنَد للمعلم احتياط في الحصة الثامنة أكثر من مرة واحدة في الأسبوع
@@ -3309,6 +3310,7 @@ const App = {
       .filter(t => t.active !== false && !absentIds.has(+t.id) && !regAbsent.has(t.name) && !usedAtPeriod.has(+t.id) && !candidateIds.has(+t.id))
       .filter(t => { const l = lesson(t.id, row.day, row.period); return isFreed(t.id, row.day, row.period) || !(l.sub || l.cl); })
       .map(t => ({ t, reason: this.reserveBlockReason(t, row) || 'مستبعد' }))
+      .filter(x => x.reason !== TOOK_TODAY)   // من أخذ احتياطًا في هذا اليوم (معتمدًا أو في المسودة) لا يظهر: لكل معلم حصة واحدة في اليوم
       .sort((a, b) => pctOf(a.t) - pctOf(b.t) || String(a.t.name).localeCompare(String(b.t.name), 'ar'));
   },
   reserveBlockReason(t, row) {
@@ -3317,7 +3319,7 @@ const App = {
     if (busy.size >= MAX_DAILY_LOAD) return 'حصصه في اليوم مكتملة';
     const sameDay = (db.log || []).filter(x => x.date === row.date && x.substitute === t.name).length
       + (window.currentPreviewItems || []).filter(x => x !== row && x.date === row.date && x.selectedTeacherId == t.id).length;
-    if (sameDay >= MAX_RESERVES_PER_DAY) return 'أخذ احتياطًا في هذا اليوم';
+    if (sameDay >= MAX_RESERVES_PER_DAY) return TOOK_TODAY;
     if (p === PERIODS.length) return 'حدّ الحصة الأخيرة الأسبوعي';
     return '';
   },
