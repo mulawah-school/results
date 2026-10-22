@@ -92,7 +92,7 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
         <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
         <div dir="ltr">📞 98986817</div>
-        <div class="text-slate-600" dir="ltr">v 2026.10.22-c</div>
+        <div class="text-slate-600" dir="ltr">v 2026.10.22-f</div>
       </div>
     </div>
   </aside>
@@ -2723,6 +2723,7 @@ const App = {
           <div>
             <h3 class="font-bold text-2xl text-slate-900">تسجيل الغياب (متعدد المعلمين)</h3>
             <p class="text-sm text-slate-500 mt-1">اختر عدة معلمين، ستظهر حصصهم أولًا، ثم اضغط «التوزيع الآلي» لتوزيعها حسب الشروط والعدالة.</p>
+
           </div>
           <div class="flex flex-wrap gap-2">
             <button onclick="App.clearAbsentSelection()" class="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700">إلغاء التحديد</button>
@@ -3216,7 +3217,7 @@ const App = {
               const candidates = this.getAbsenceCandidates(r, new Set(
                 rows.filter((x,i)=>i!==rowIndex && x.day===r.day && x.period===r.period && x.selectedTeacherId).map(x=>x.selectedTeacherId)
               )).map(t => this.scoreAbsenceCandidate(t, r, rows))
-              .sort((a,b) => this.compareCandidates(a,b));
+              .sort((a,b) => this.compareCandidates(a,b));   // من الأقل نسبة إلى الأعلى
 
               r.scoredList = candidates;
               // كل المعلمين الفارغين في هذه الحصة وغير المرشَّحين تلقائيًا (استبعدتهم الشروط) - يظهرون في آخر القائمة مرتّبين من الأقل نسبة إلى الأعلى
@@ -3239,12 +3240,12 @@ const App = {
                           const pct = sc.quota > 0 ? Math.round((sc.assigned / sc.quota) * 100) : 100;
                           return `
                             <option value="${sc.teacher.id}" ${!r.selfManaged && sc.teacher.id == r.selectedTeacherId ? 'selected' : ''}>
-                              ${esc(sc.teacher.name)} (${sc.assigned}/${sc.quota} - ${pct}%)${sc.runViol ? ' ⚠ حصص متتالية' : ''}${sc.workedPrevDay ? ' ⚠ يومان متتاليان' : ''}
+                              ${esc(sc.teacher.name)} (${sc.assigned}/${sc.quota} - ${pct}%)${sc.sameClass ? ' 🏫 يدرس الصف' : ''}${sc.runViol ? ' ⚠ حصص متتالية' : ''}${sc.workedPrevDay ? ' ⚠ يومان متتاليان' : ''}
                             </option>
                           `;
                         }).join('')}
                         ${extras.length ? `<optgroup label="باقي الفارغين في هذه الحصة (استبعدهم التوزيع الآلي — الاختيار اليدوي)">${extras.map(x => `
-                            <option value="f${x.t.id}" ${!r.selfManaged && x.t.id == r.selectedTeacherId ? 'selected' : ''}>${esc(x.t.name)} (${db.cnt[x.t.id] || 0}/${quotaOf(x.t)} - ${pctOf(x.t)}%) — ${esc(x.reason)}</option>`).join('')}</optgroup>` : ''}
+                            <option value="f${x.t.id}" ${!r.selfManaged && x.t.id == r.selectedTeacherId ? 'selected' : ''}>${esc(x.t.name)} (${db.cnt[x.t.id] || 0}/${quotaOf(x.t)} - ${pctOf(x.t)}%)${this.teachesClass(x.t, r.className) ? ' 🏫 يدرس الصف' : ''} — ${esc(x.reason)}</option>`).join('')}</optgroup>` : ''}
                       </select>
                       ${selectedT && !r.selfManaged ? (this.waAlreadySent(selectedT.id, r.date, r.period)
                         ? `<span title="لن تُرسَل رسالة أخرى لنفس اليوم والحصة" class="bg-slate-100 text-slate-500 px-2 py-2 rounded-xl text-[11px] font-semibold">✓ أُرسلت واتساب</span>`
@@ -3379,6 +3380,19 @@ const App = {
   // ترتيب المرشحين: 1) عدم التتالي  2) العدالة: الأقل نسبة إشغال (من أخذ نسبته يُؤخَّر ويُقدَّم من نسبته أقل أو 0%)
   // 3) الأقل حصصًا في ذلك اليوم (حصصه الفعلية + الاحتياط الموزع له)  4) الأقل عددًا في حصص الاحتياط
   // 5) الأبعد عهدًا بآخر احتياط  6) الاسم
+  // هل يدرّس المعلم هذا الصف في جدوله الأسبوعي؟
+  teachesClass(t, className) {
+    const norm = x => this.shortClass(String(x || '')).replace(/\s+/g, '');
+    const target = norm(className);
+    if (!target) return false;
+    const pre = String(t.id) + '|';
+    return Object.keys(db.s || {}).some(k => {
+      if (!k.startsWith(pre)) return false;
+      const l = db.s[k] || {};
+      return norm(l.cl || l.cls) === target;
+    });
+  },
+
   compareCandidates(a, b) {
     if (a.pct !== b.pct) return a.pct - b.pct;                                   // 1) العدالة (الأقل نسبة)
     if (a.runViol !== b.runViol) return a.runViol ? 1 : -1;                      // 2) تجنّب من معه حصتان متتاليتان (بقدر المستطاع)
@@ -3415,7 +3429,8 @@ const App = {
       pct,
       run,
       runViol: run > MAX_CONSECUTIVE,
-      workedPrevDay
+      workedPrevDay,
+      sameClass: this.teachesClass(t, row.className)
     };
   },
 
