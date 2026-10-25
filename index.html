@@ -92,7 +92,7 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
         <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
         <div dir="ltr">📞 98986817</div>
-        <div class="text-slate-600" dir="ltr">v 2026.10.22-f</div>
+        <div class="text-slate-600" dir="ltr">v 2026.10.25-a</div>
       </div>
     </div>
   </aside>
@@ -3701,18 +3701,29 @@ const App = {
       return;
     }
 
+    // النسبة التراكمية = كل ما أخذه المعلم منذ بداية العام ÷ الحد؛ الأسبوعية = ما أخذه في الأسبوع المعروض ÷ الحد
+    const mode = this._statsMode === 'week' ? 'week' : 'cum';
+    const wk = this._statsWeek || weekStartISO(localISODate(new Date()));
+    const wkEnd = (() => { const [y, m, d] = wk.split('-').map(Number); return localISODate(new Date(y, m - 1, d + 4)); })();
+    const wkCounts = {};
+    (db.log || []).forEach(x => { if (x.substitute && weekStartISO(x.date) === wk) wkCounts[x.substitute] = (wkCounts[x.substitute] || 0) + 1; });
     const statsList = db.teachers.filter(t => t.active !== false).map(t => {   // المعلم المستثنى من الاحتياط لا يظهر في الإحصاء
       const taken = db.cnt[t.id] || 0;
       const quota = quotaOf(t);
       const pct = pctOf(t);
+      const weekTaken = wkCounts[t.name] || 0;
+      const weekPct = quota > 0 ? Math.round((weekTaken / quota) * 100) : (weekTaken > 0 ? 100 : 0);
       return {
         teacher: t,
         taken,
         quota,
         pct,
+        weekTaken,
+        weekPct,
         subject: primarySubject(t.id)
       };
-    }).sort((a, b) => b.pct - a.pct || a.teacher.name.localeCompare(b.teacher.name, 'ar'));
+    }).sort((a, b) => (mode === 'week' ? b.weekPct - a.weekPct : b.pct - a.pct) || b.pct - a.pct || a.teacher.name.localeCompare(b.teacher.name, 'ar'));
+    const pctBadge = v => `<span class="font-bold text-xs px-2.5 py-1 rounded-full ${v >= 100 ? 'bg-amber-100 text-amber-800' : v >= 50 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}">${v}%</span>`;
 
     $('app').innerHTML = tabsBar + `
       <section class="bg-white rounded-3xl p-6 md:p-8 card-shadow border border-slate-100 print-block mb-6">
@@ -3740,6 +3751,15 @@ const App = {
           <button onclick="window.print()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-all flex items-center gap-2">🖨️ طباعة التقرير الرسمي</button>
         </div>
 
+        <div class="no-print flex flex-wrap items-center gap-2 mb-4">
+          <button onclick="App.setStatsMode('week')" class="px-4 py-2.5 rounded-xl text-sm font-bold border transition-all ${mode === 'week' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}">📅 النسبة الأسبوعية</button>
+          <button onclick="App.setStatsMode('cum')" class="px-4 py-2.5 rounded-xl text-sm font-bold border transition-all ${mode === 'cum' ? 'bg-emerald-600 text-white border-emerald-600 shadow-md' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}">📈 النسبة التراكمية</button>
+          <div class="flex items-center gap-1 mr-2 text-sm font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5">
+            <button onclick="App.shiftStatsWeek(-1)" class="px-2 py-1 rounded-lg hover:bg-white" title="الأسبوع السابق">›</button>
+            <span>أسبوع ${wk} إلى ${wkEnd}</span>
+            <button onclick="App.shiftStatsWeek(1)" class="px-2 py-1 rounded-lg hover:bg-white" title="الأسبوع التالي">‹</button>
+          </div>
+        </div>
         <div class="overflow-x-auto rounded-2xl border border-slate-200 mb-8">
           <table class="w-full text-sm text-right">
             <thead>
@@ -3747,9 +3767,11 @@ const App = {
                 <th class="p-3.5 text-center w-16">#</th>
                 <th class="p-3.5">اسم المعلم</th>
                 <th class="p-3.5">التخصص / المادة</th>
-                <th class="p-3.5 text-center">حصص الاحتياط المنفذة</th>
+                <th class="p-3.5 text-center">المنفذة (تراكمي)</th>
+                <th class="p-3.5 text-center">هذا الأسبوع</th>
                 <th class="p-3.5 text-center">الحد المسموح</th>
-                <th class="p-3.5 text-center">نسبة الإشغال المئوية</th>
+                <th class="p-3.5 text-center">📅 النسبة الأسبوعية</th>
+                <th class="p-3.5 text-center">📈 النسبة التراكمية</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
@@ -3759,12 +3781,12 @@ const App = {
                   <td class="p-3.5 font-bold text-slate-900">${esc(st.teacher.name)}</td>
                   <td class="p-3.5 text-slate-600">${esc(st.subject)}</td>
                   <td class="p-3.5 text-center font-black text-emerald-600 text-base">${st.taken}</td>
+                  <td class="p-3.5 text-center font-bold text-indigo-600">${st.weekTaken}</td>
                   <td class="p-3.5 text-center text-slate-600">${st.quota}</td>
-                  <td class="p-3.5 text-center">
-                    <span class="font-bold text-xs px-2.5 py-1 rounded-full ${st.pct >= 100 ? 'bg-amber-100 text-amber-800' : st.pct >= 50 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}">${st.pct}%</span>
-                  </td>
+                  <td class="p-3.5 text-center">${pctBadge(st.weekPct)}</td>
+                  <td class="p-3.5 text-center">${pctBadge(st.pct)}</td>
                 </tr>
-              `).join('') || `<tr><td colspan="6" class="p-8 text-center text-slate-400 font-medium">لا توجد بيانات معلمين مسجلة.</td></tr>`}
+              `).join('') || `<tr><td colspan="8" class="p-8 text-center text-slate-400 font-medium">لا توجد بيانات معلمين مسجلة.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -3781,6 +3803,15 @@ const App = {
         </div>
       </section>
     `;
+  },
+
+  setStatsMode(m) { this._statsMode = m === 'week' ? 'week' : 'cum'; this.reports('stats'); },
+  shiftStatsWeek(n) {
+    const cur = this._statsWeek || weekStartISO(localISODate(new Date()));
+    const [y, m, d] = cur.split('-').map(Number);
+    this._statsWeek = weekStartISO(localISODate(new Date(y, m - 1, d + 7 * n)));
+    this._statsMode = 'week';
+    this.reports('stats');
   },
 
   clearLog() {
