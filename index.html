@@ -92,7 +92,7 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
         <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
         <div dir="ltr">📞 98986817</div>
-        <div class="text-slate-600" dir="ltr">v 2026.10.25-b</div>
+        <div class="text-slate-600" dir="ltr">v 2026.10.27-c</div>
       </div>
     </div>
   </aside>
@@ -157,13 +157,30 @@ const RAFID_API_URL = 'https://script.google.com/macros/s/AKfycbzgmhNSqLGjoQ1Br9
     window.RAFID_CODE = (q.get('s') || '').trim() || (localStorage.getItem('schoolSyncCode') || '').trim();
     const code = window.RAFID_CODE.replace(/[^A-Za-z0-9_-]/g, '');
     window.RAFID_SCOPE = code;
-    if (!code) return;
     const SCOPED = new Set(['schoolReserveDB', 'schoolReserveDB_backup', 'schoolSyncRev', 'schoolSyncDirty', 'schoolSyncBase', 'schoolSyncEpoch', 'rafidInfo', 'waToken', 'waPhoneId']);
     const P = Storage.prototype, g = P.getItem, st = P.setItem, rm = P.removeItem;
-    const k = (self, key) => (self === window.localStorage && SCOPED.has(key)) ? key + '@' + code : key;
+    const k = (self, key) => (code && self === window.localStorage && SCOPED.has(key)) ? key + '@' + code : key;
+    // عند امتلاء مساحة المتصفح (5MB): نحذف النسخ الاحتياطية والمؤقتة فقط (لا بيانات أي مدرسة) ثم نعيد المحاولة
+    const purge = (keepKey, withBase) => {
+      const ls = window.localStorage, dead = [];
+      for (let i = 0; i < ls.length; i++) {
+        const n = ls.key(i);
+        if (n && n !== keepKey && (/^rafidStash:/.test(n) || /^schoolReserveDB_backup/.test(n) || (withBase && /^schoolSyncBase/.test(n)))) dead.push(n);
+      }
+      dead.forEach(n => rm.call(ls, n));
+      return dead.length;
+    };
     P.getItem = function (key) { return g.call(this, k(this, key)); };
-    P.setItem = function (key, v) { return st.call(this, k(this, key), v); };
     P.removeItem = function (key) { return rm.call(this, k(this, key)); };
+    P.setItem = function (key, v) {
+      const kk = k(this, key);
+      try { return st.call(this, kk, v); }
+      catch (e) {
+        if (this !== window.localStorage || !purge(kk, true)) throw e;
+        return st.call(this, kk, v);
+      }
+    };
+    try { purge(); } catch (e) {}   // بقايا قديمة (نسخ احتياطية ومخزّنات انتقال) لا حاجة لها
   } catch (e) {}
 })();
 
@@ -609,10 +626,14 @@ const save = () => {
 };
 // عدّاد الاحتياط التراكمي يُحسب دائمًا من أرشيف الغياب (منذ أول غياب مسجّل، أو منذ آخر «تصفير»): مصدر واحد للحقيقة
 function recomputeCnt() {
-  const from = db.cntFrom || '', byName = {};
-  (db.log || []).forEach(x => { if (x.substitute && (x.date || '') >= from) byName[x.substitute] = (byName[x.substitute] || 0) + 1; });
+  // «تصفير» يسجّل وقتًا (للجميع db.cntResetAt أو لمعلم واحد t.cntResetAt): تُحتسب بعده الحصص المعتمدة فقط، والأرشيف لا يُمس
+  if (db.cntFrom && !db.cntResetAt) { const d = new Date(db.cntFrom + 'T00:00:00'); db.cntResetAt = isNaN(d) ? 0 : d.getTime(); }
   db.cnt = db.cnt || {};
-  (db.teachers || []).forEach(t => { db.cnt[t.id] = byName[t.name] || 0; });
+  (db.teachers || []).forEach(t => {
+    const rt = Math.max(Number(db.cntResetAt) || 0, Number(t.cntResetAt) || 0);
+    const rIso = rt ? localISODate(new Date(rt)) : '';
+    db.cnt[t.id] = (db.log || []).filter(x => x.substitute === t.name && (!rt || (x.at ? x.at > rt : (x.date || '') > rIso))).length;
+  });
 }
 const key = (id, d, p) => id + '|' + d + '|' + p;
 const freeKey = (id, d, p) => id + '|' + d + '|' + p;
@@ -1579,9 +1600,9 @@ const App = {
   // تصفير عداد الاحتياط (النسبة) لجميع المعلمين دفعة واحدة، دون مسح سجل أرشيف الغياب
   resetAllCounts() {
     this.confirm('هل تريد تصفير عداد الاحتياط (النسبة) لجميع المعلمين وإعادتها إلى 0%؟ لا يؤثر هذا على سجل أرشيف الغياب.', () => {
-      db.cntFrom = localISODate(new Date());   // الأرشيف يبقى، والعدّاد يبدأ من اليوم
+      db.cntResetAt = Date.now(); db.cntFrom = ''; db.teachers.forEach(t => { delete t.cntResetAt; });   // الأرشيف يبقى، والعدّاد يبدأ من الآن
       save();
-      this.page(this._currentPage || 'teachers');
+      if (this._currentPage === 'reports') this.reports('stats'); else this.page(this._currentPage || 'teachers');
     }, 'تصفير جميع المعلمين');
   },
 
@@ -3593,7 +3614,8 @@ const App = {
         period: row.period,
         subject: row.subject,
         className: row.className,
-        substitute: substitute.name
+        substitute: substitute.name,
+        at: Date.now()
       });
       db.cnt[substitute.id] = (db.cnt[substitute.id]||0) + 1;
     });
@@ -3714,7 +3736,8 @@ const App = {
     const statsList = db.teachers.filter(t => t.active !== false).map(t => {   // المعلم المستثنى من الاحتياط لا يظهر في الإحصاء
       return { teacher: t, taken: db.cnt[t.id] || 0, quota: quotaOf(t), pct: pctOf(t), subject: primarySubject(t.id) };
     }).sort((a, b) => b.pct - a.pct || a.teacher.name.localeCompare(b.teacher.name, 'ar'));
-    const firstDate = (db.log || []).reduce((m, x) => (x.date && (!m || x.date < m) && x.date >= (db.cntFrom || '') ? x.date : m), '');
+    const firstDate = (db.log || []).reduce((m, x) => (x.date && (!m || x.date < m) ? x.date : m), '');
+    const resetNote = db.cntResetAt ? ' — آخر تصفير عام: ' + new Date(db.cntResetAt).toLocaleDateString('ar-OM') : '';
     const pctBadge = v => `<span class="font-bold text-xs px-2.5 py-1 rounded-full ${v >= 100 ? 'bg-amber-100 text-amber-800' : v >= 50 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}">${v}%</span>`;
 
     $('app').innerHTML = tabsBar + `
@@ -3745,7 +3768,8 @@ const App = {
 
         <div class="no-print flex flex-wrap items-center gap-2 mb-4 text-sm font-semibold text-slate-600">
           <span class="px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-bold shadow-md">📈 النسبة التراكمية</span>
-          <span>${firstDate ? 'محسوبة من أول غياب مسجّل: ' + firstDate : 'لا توجد غيابات مسجلة بعد'}</span>
+          <span>${firstDate ? 'محسوبة من أول غياب مسجّل: ' + firstDate : 'لا توجد غيابات مسجلة بعد'}${resetNote}</span>
+          <button onclick="App.resetAllCounts()" class="mr-auto px-4 py-2.5 rounded-xl text-sm font-bold border border-rose-300 text-rose-700 bg-rose-50 hover:bg-rose-100" title="إعادة النسبة التراكمية لجميع المعلمين إلى 0%">♻️ تصفير النسب</button>
         </div>
         <div class="overflow-x-auto rounded-2xl border border-slate-200 mb-8">
           <table class="w-full text-sm text-right">
@@ -3791,7 +3815,7 @@ const App = {
   clearLog() {
     this.confirm('هل أنت متأكد من مسح أرشيف الغياب وإعادة ضبط عدادات الاحتياط لجميع المعلمين؟', () => {
       db.log = [];
-      db.cntFrom = '';
+      db.cntFrom = ''; db.cntResetAt = 0; db.teachers.forEach(t => { delete t.cntResetAt; });
       db.teachers.forEach(t => db.cnt[t.id] = 0);
       save();
       this.reports('archive');
