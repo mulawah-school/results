@@ -92,7 +92,7 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
         <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
         <div dir="ltr">📞 98986817</div>
-        <div class="text-slate-600" dir="ltr">v 2026.10.27-c</div>
+        <div class="text-slate-600" dir="ltr">v 2026.10.28-a</div>
       </div>
     </div>
   </aside>
@@ -2831,9 +2831,40 @@ const App = {
     save();
   },
 
+  // ملخص الأعداد: من المسودة الحالية، وإن لم توجد مسودة فمن الغياب المعتمد لليوم المختار (حتى لا يظهر 0 بعد الاعتماد)
+  renderAbsenceSummary() {
+    const box = $('absenceSummary');
+    if (!box) return;
+    const rows = window.currentPreviewItems || [];
+    let absentCount, total, assigned, unassigned, selfManagedCount, note = '';
+    if (rows.length) {
+      assigned = rows.filter(x => x.selectedTeacherId).length;
+      selfManagedCount = rows.filter(x => x.selfManaged && !x.selectedTeacherId).length;
+      unassigned = rows.length - assigned - selfManagedCount;
+      absentCount = new Set(rows.map(x => x.absentId)).size;
+      total = rows.length;
+    } else {
+      const iso = $('date')?.value;
+      const list = (db.log || []).filter(x => x.date === iso);
+      absentCount = new Set(list.map(x => x.absent)).size;
+      total = list.length;
+      selfManagedCount = list.filter(x => x.substitute === 'إدارة ذاتية').length;
+      assigned = total - selfManagedCount;
+      unassigned = 0;
+      if (total) note = '<div class="col-span-full text-xs text-emerald-700 font-semibold">الأرقام للغياب المعتمد ليوم ' + dmy(iso) + '</div>';
+    }
+    box.innerHTML = `
+      <div class="rounded-2xl bg-slate-50 border p-3"><div class="text-xs text-slate-500">المعلمون الغائبون</div><b class="text-xl">${absentCount}</b></div>
+      <div class="rounded-2xl bg-slate-50 border p-3"><div class="text-xs text-slate-500">إجمالي الحصص</div><b class="text-xl">${total}</b></div>
+      <div class="rounded-2xl bg-emerald-50 border border-emerald-100 p-3"><div class="text-xs text-emerald-700">موزعة</div><b class="text-xl text-emerald-700">${assigned}</b></div>
+      <div class="rounded-2xl bg-amber-50 border border-amber-100 p-3"><div class="text-xs text-amber-700">غير موزعة</div><b class="text-xl text-amber-700">${unassigned}</b></div>
+      ${selfManagedCount ? `<div class="rounded-2xl bg-indigo-50 border border-indigo-100 p-3"><div class="text-xs text-indigo-700">إدارة ذاتية</div><b class="text-xl text-indigo-700">${selfManagedCount}</b></div>` : ''}${note}`;
+  },
+
   renderRegisteredAbsences() {
     const box = $('registeredAbsences');
     if (!box) return;
+    this.renderAbsenceSummary();
     const iso = $('date')?.value;
     const list = (db.log || []).filter(x => x.date === iso);
     const editingHere = db.absDraft?.editing && db.absDraft.date === iso;
@@ -3208,17 +3239,7 @@ const App = {
     const review = $('reviewContainer');
     if (!less) return;
 
-    const assigned = rows.filter(x => x.selectedTeacherId).length;
-    const selfManagedCount = rows.filter(x => x.selfManaged && !x.selectedTeacherId).length;
-    const unassigned = rows.length - assigned - selfManagedCount;
-    const absentCount = new Set(rows.map(x => x.absentId)).size;
-
-    $('absenceSummary').innerHTML = `
-      <div class="rounded-2xl bg-slate-50 border p-3"><div class="text-xs text-slate-500">المعلمون الغائبون</div><b class="text-xl">${absentCount}</b></div>
-      <div class="rounded-2xl bg-slate-50 border p-3"><div class="text-xs text-slate-500">إجمالي الحصص</div><b class="text-xl">${rows.length}</b></div>
-      <div class="rounded-2xl bg-emerald-50 border border-emerald-100 p-3"><div class="text-xs text-emerald-700">موزعة</div><b class="text-xl text-emerald-700">${assigned}</b></div>
-      <div class="rounded-2xl bg-amber-50 border border-amber-100 p-3"><div class="text-xs text-amber-700">غير موزعة</div><b class="text-xl text-amber-700">${unassigned}</b></div>
-      ${selfManagedCount ? `<div class="rounded-2xl bg-indigo-50 border border-indigo-100 p-3"><div class="text-xs text-indigo-700">إدارة ذاتية</div><b class="text-xl text-indigo-700">${selfManagedCount}</b></div>` : ''}`;
+    this.renderAbsenceSummary();
 
     if (!rows.length) {
       less.innerHTML = `<div class="border border-dashed rounded-2xl p-10 text-center text-slate-400">اختر معلمًا أو عدة معلمين من القائمة لعرض حصصهم في يوم (${$('day')?.value || 'الأحد'}).</div>`;
