@@ -92,7 +92,7 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
         <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
         <div dir="ltr">📞 98986817</div>
-        <div class="text-slate-600" dir="ltr">v 2026.10.28-a</div>
+        <div class="text-slate-600" dir="ltr">v 2026.10.28-b</div>
       </div>
     </div>
   </aside>
@@ -669,6 +669,7 @@ const PERIOD_ORDINALS = ['الأولى', 'الثانية', 'الثالثة', 'ا
 // قواعد الاحتياط
 const BREAK_AFTER_PERIOD = 4;   // الفسحة بعد الحصة الرابعة
 const MAX_RESERVES_PER_DAY = 1;
+const ABSENCE_REASONS = ['مرضي', 'ظرف طارئ', 'إجازة', 'دورة تدريبية', 'مهمة رسمية', 'استئذان'];
 const TOOK_TODAY = 'أخذ احتياطًا في هذا اليوم';
 const MAX_DAILY_LOAD = 5;       // من لديه 5 حصص في اليوم يُستبعد من الاحتياط
 const WEEKLY_LAST_PERIOD_LIMIT = 3; // من لديه 3 حصص (فأكثر) في الحصة الثامنة خلال الأسبوع لا يُعطى الحصة الثامنة احتياطًا
@@ -2756,6 +2757,7 @@ const App = {
 
           </div>
           <div class="flex flex-wrap gap-2">
+            <button onclick="App.toggleReasonOption()" title="تفعيل/تعطيل خيار سبب الغياب أمام كل معلم غائب" class="px-4 py-2.5 rounded-xl border font-semibold ${db.reasonEnabled ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-200'}">📝 سبب الغياب: ${db.reasonEnabled ? 'مفعّل' : 'معطّل'}</button>
             <button onclick="App.clearAbsentSelection()" class="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700">إلغاء التحديد</button>
             <button onclick="App.buildAbsenceDraft()" class="px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50">↻ تحديث الحصص</button>
             <button onclick="App.runSmartDistributionPreview()" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold">⚖️ التوزيع الآلي</button>
@@ -2806,6 +2808,7 @@ const App = {
           </div>
         </div>
       </section>`;
+    window.absReasons = Object.assign({}, dr?.reasons || {});
     window.currentPreviewItems = dr ? Object.entries(dr.picks || {}).map(([k, v]) => {
       const [a, pp] = k.split('|');
       return { absentId: +a, period: +pp, day: dayNameFromISO(dr.date), selectedTeacherId: v === 'self' ? null : +v, selfManaged: v === 'self' };
@@ -2823,6 +2826,7 @@ const App = {
     const next = (ids.length || editing) ? {
       date: editing ? db.absDraft.date : ($('date')?.value || localISODate()),
       absentIds: ids,
+      reasons: Object.fromEntries(Object.entries(window.absReasons || {}).filter(([k, v]) => v && ids.includes(+k))),
       picks: Object.fromEntries(rows.filter(r => r.selectedTeacherId || r.selfManaged).map(r => [`${r.absentId}|${r.period}`, r.selfManaged ? 'self' : r.selectedTeacherId])),
       ...(editing || {})
     } : null;
@@ -2861,6 +2865,36 @@ const App = {
       ${selfManagedCount ? `<div class="rounded-2xl bg-indigo-50 border border-indigo-100 p-3"><div class="text-xs text-indigo-700">إدارة ذاتية</div><b class="text-xl text-indigo-700">${selfManagedCount}</b></div>` : ''}${note}`;
   },
 
+  toggleReasonOption() {
+    db.reasonEnabled = !db.reasonEnabled;
+    save();
+    this.page('absence');
+  },
+  setAbsReason(absentId, val) {
+    window.absReasons = window.absReasons || {};
+    if (val === '__other') { window.absReasons[absentId] = window.absReasons[absentId] && !ABSENCE_REASONS.includes(window.absReasons[absentId]) ? window.absReasons[absentId] : 'أخرى'; }
+    else window.absReasons[absentId] = val;
+    this.saveAbsDraft();
+    this.renderAbsenceDraft();
+  },
+  setAbsReasonText(absentId, val) {
+    window.absReasons = window.absReasons || {};
+    window.absReasons[absentId] = (val || '').trim() || 'أخرى';
+    this.saveAbsDraft();
+  },
+  reasonPicker(absentId) {
+    const cur = (window.absReasons || {})[absentId] || '';
+    const isOther = cur && !ABSENCE_REASONS.includes(cur);
+    return `<span class="flex flex-wrap items-center gap-2">
+      <select onchange="App.setAbsReason(${absentId}, this.value)" class="border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white font-semibold text-slate-700 outline-none focus:border-indigo-500">
+        <option value="">سبب الغياب…</option>
+        ${ABSENCE_REASONS.map(r => `<option value="${esc(r)}" ${cur === r ? 'selected' : ''}>${esc(r)}</option>`).join('')}
+        <option value="__other" ${isOther ? 'selected' : ''}>أخرى…</option>
+      </select>
+      ${isOther ? `<input value="${esc(cur === 'أخرى' ? '' : cur)}" onchange="App.setAbsReasonText(${absentId}, this.value)" placeholder="اكتب السبب" class="border border-slate-300 rounded-lg px-2 py-1 text-xs w-40 outline-none focus:border-indigo-500">` : ''}
+    </span>`;
+  },
+
   renderRegisteredAbsences() {
     const box = $('registeredAbsences');
     if (!box) return;
@@ -2890,7 +2924,7 @@ const App = {
           ${Object.entries(groups).map(([name, rows]) => `
             <div class="bg-white border border-emerald-100 rounded-xl p-3">
               <div class="flex items-center justify-between gap-2 mb-1">
-                <div class="font-bold text-slate-800">${esc(name)}</div>
+                <div class="font-bold text-slate-800">${esc(name)}${(rows.find(x => x.reason) || {}).reason ? ` <span class="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-0.5 mr-1">${esc(rows.find(x => x.reason).reason)}</span>` : ''}</div>
                 <button onclick="App.deleteAbsent('${iso}', ${esc(JSON.stringify(name))})" title="حذف هذا الغائب من الاعتماد" class="shrink-0 text-xs bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 px-2 py-0.5 rounded-lg font-semibold">🗑️ حذف</button>
               </div>
               ${rows.sort((a, b) => a.period - b.period).map(r => {
@@ -2971,7 +3005,8 @@ const App = {
         const st = db.teachers.find(t => t.name === e.substitute);
         if (st) picks[`${at.id}|${e.period}`] = st.id;
       });
-      db.absDraft = { date: iso, absentIds, picks, editing: true, backup: entries.map(e => ({ ...e })) };
+      const reasons = {}; entries.forEach(e => { const at = db.teachers.find(t => t.name === e.absent); if (at && e.reason) reasons[at.id] = e.reason; });
+      db.absDraft = { date: iso, absentIds, picks, reasons, editing: true, backup: entries.map(e => ({ ...e })) };
       db.log = db.log.filter(x => x.date !== iso);
       entries.forEach(e => {
         const st = db.teachers.find(t => t.name === e.substitute);
@@ -3043,12 +3078,13 @@ const App = {
     items.forEach(it => {
       let g = byAbsent.find(x => x.name === it.absent);
       if (!g) byAbsent.push(g = { name: it.absent, rows: [] });
+      if (it.reason && !g.reason) g.reason = it.reason;
       g.rows.push(it);
     });
     const cell = 'border:1px solid #000;padding:6px 4px;text-align:center;';
     const blocks = byAbsent.map(g => `
       <div style="page-break-inside:avoid;margin-bottom:22px;">
-        <div style="font-size:13px;margin-bottom:4px;"><b>زملائي المعلمين / نظراً لغياب الزميل:</b> ${esc(g.name)} <b>لهذا اليوم ${esc(dn)}</b></div>
+        <div style="font-size:13px;margin-bottom:4px;"><b>زملائي المعلمين / نظراً لغياب الزميل:</b> ${esc(g.name)}${g.reason ? ' (' + esc(g.reason) + ')' : ''} <b>لهذا اليوم ${esc(dn)}</b></div>
         <div style="font-size:13px;font-weight:700;margin-bottom:8px;">الموافق ${esc(dmy(iso))} أمل تسديد مكانه حسب الجدول الموضح والتوقيع بالعلم ,, ولكم جزيل الشكر</div>
         <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
           <colgroup><col style="width:13%"><col style="width:10%"><col style="width:20%"><col style="width:32%"><col style="width:13%"><col style="width:12%"></colgroup>
@@ -3123,13 +3159,14 @@ const App = {
     const iso = rows[0].date, dayName = rows[0].day;
     const draftItems = rows.map(r => ({
       absent: r.absentName, period: r.period, className: r.className, subject: r.subject,
-      substitute: (db.teachers.find(t => t.id == r.selectedTeacherId) || {}).name || ''
+      substitute: (db.teachers.find(t => t.id == r.selectedTeacherId) || {}).name || '',
+      reason: db.reasonEnabled ? ((window.absReasons || {})[r.absentId] || '') : ''
     }));
     // لو تم اعتماد غياب آخر مسبقًا لنفس اليوم (معلم أُضيف متأخرًا)، يُدمج مع المسودة الحالية في نفس ورقة الطباعة
     const already = (db.log || []).filter(x => x.date === iso);
     const seen = new Set(draftItems.map(i => i.absent + '|' + i.period));
     const merged = draftItems.concat(already.filter(x => !seen.has(x.absent + '|' + x.period))
-      .map(x => ({ absent: x.absent, period: +x.period, className: x.className, subject: x.subject, substitute: x.substitute })));
+      .map(x => ({ absent: x.absent, period: +x.period, className: x.className, subject: x.subject, substitute: x.substitute, reason: x.reason || '' })));
     this.printReserveSheet(merged, iso, dayName);
   },
 
@@ -3258,6 +3295,7 @@ const App = {
         <div class="border border-slate-200 rounded-2xl overflow-hidden mb-4">
           <div class="px-4 py-3 bg-slate-50 flex flex-wrap justify-between items-center gap-2">
             <b>المعلم الغائب: ${esc(group[0].absentName)}</b>
+            ${db.reasonEnabled ? this.reasonPicker(group[0].absentId) : ''}
             <span class="text-xs text-slate-500 bg-white px-2.5 py-1 rounded-lg border">${group.length} حصة</span>
           </div>
           <div class="overflow-auto p-4 space-y-4">
@@ -3636,7 +3674,8 @@ const App = {
         subject: row.subject,
         className: row.className,
         substitute: substitute.name,
-        at: Date.now()
+        at: Date.now(),
+        ...(db.reasonEnabled && (window.absReasons || {})[row.absentId] ? { reason: window.absReasons[row.absentId] } : {})
       });
       db.cnt[substitute.id] = (db.cnt[substitute.id]||0) + 1;
     });
@@ -3652,7 +3691,8 @@ const App = {
         period: row.period,
         subject: row.subject,
         className: row.className,
-        substitute: 'إدارة ذاتية'
+        substitute: 'إدارة ذاتية',
+        ...(db.reasonEnabled && (window.absReasons || {})[row.absentId] ? { reason: window.absReasons[row.absentId] } : {})
       });
     });
 
@@ -3714,6 +3754,7 @@ const App = {
                   <th class="p-3.5">التاريخ</th>
                   <th class="p-3.5">اليوم</th>
                   <th class="p-3.5">المعلم الغائب</th>
+                  ${db.log.some(x => x.reason) ? '<th class="p-3.5">السبب</th>' : ''}
                   <th class="p-3.5 text-center">الحصة</th>
                   <th class="p-3.5">المادة</th>
                   <th class="p-3.5">الفصل</th>
@@ -3727,6 +3768,7 @@ const App = {
                     <td class="p-3.5 text-slate-600">${esc(x.date)}</td>
                     <td class="p-3.5 text-slate-700 font-semibold">${esc(x.day)}</td>
                     <td class="p-3.5 font-bold text-slate-800">${esc(x.absent)}</td>
+                    ${db.log.some(y => y.reason) ? `<td class="p-3.5 text-slate-600">${esc(x.reason || '')}</td>` : ''}
                     <td class="p-3.5 text-center font-bold text-emerald-600">${x.period}</td>
                     <td class="p-3.5 text-slate-700">${esc(x.subject)}</td>
                     <td class="p-3.5 text-slate-600">${esc(x.className)}</td>
