@@ -92,7 +92,7 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
         <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
         <div dir="ltr">📞 98986817</div>
-        <div class="text-slate-600" dir="ltr">v 2026.10.28-b</div>
+        <div class="text-slate-600" dir="ltr">v 2026.10.31-a</div>
       </div>
     </div>
   </aside>
@@ -631,7 +631,8 @@ function recomputeCnt() {
   db.cnt = db.cnt || {};
   (db.teachers || []).forEach(t => {
     const rt = Math.max(Number(db.cntResetAt) || 0, Number(t.cntResetAt) || 0);
-    const rIso = rt ? localISODate(new Date(rt)) : '';
+    const rd = rt ? new Date(rt) : null;   // (لا نستعمل localISODate هنا: تُستدعى هذه الدالة قبل تعريفها عند فتح الصفحة)
+    const rIso = rd ? `${rd.getFullYear()}-${String(rd.getMonth() + 1).padStart(2, '0')}-${String(rd.getDate()).padStart(2, '0')}` : '';
     db.cnt[t.id] = (db.log || []).filter(x => x.substitute === t.name && (!rt || (x.at ? x.at > rt : (x.date || '') > rIso))).length;
   });
 }
