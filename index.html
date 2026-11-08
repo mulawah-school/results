@@ -92,7 +92,7 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
         <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
         <div dir="ltr">📞 98986817</div>
-        <div class="text-slate-600" dir="ltr">v 2026.10.31-a</div>
+        <div class="text-slate-600" dir="ltr">v 2026.11.08-a</div>
       </div>
     </div>
   </aside>
@@ -665,6 +665,10 @@ const weekStartISO = iso => {
   const g = new Date(y, m - 1, dd).getDay();   // الأحد = 0 ... السبت = 6
   return localISODate(new Date(y, m - 1, dd - (g === 6 ? 6 : g)));
 };
+// النسبة الأسبوعية: ما أخذه المعلم في الأسبوع الحالي فقط ÷ الحد المسموح، وتبدأ من الصفر كل يوم أحد
+const currentWeekStart = () => weekStartISO(localISODate(new Date()));
+const weekCountOf = (t, wk) => (db.log || []).filter(x => x.substitute === t.name && weekStartISO(x.date) === (wk || currentWeekStart())).length;
+const weekPctOf = (t, wk) => { const q = quotaOf(t), n = weekCountOf(t, wk); return q > 0 ? Math.round((n / q) * 100) : (n > 0 ? 100 : 0); };
 const printDayName = d => d === 'الاثنين' ? 'الإثنين' : d;
 const PERIOD_ORDINALS = ['الأولى', 'الثانية', 'الثالثة', 'الرابعة', 'الخامسة', 'السادسة', 'السابعة', 'الثامنة'];
 // قواعد الاحتياط
@@ -2796,7 +2800,7 @@ const App = {
                   <input type="checkbox" class="abs-teacher-check w-4 h-4 accent-emerald-600" value="${t.id}" ${dr && dr.absentIds.includes(t.id) ? 'checked' : ''} onchange="App.buildAbsenceDraft()">
                   <span class="flex-1 text-sm font-semibold">${esc(t.name)}</span>
                   <span class="abs-badge hidden text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700" data-tname="${esc(t.name)}">غائب مسجّل</span>
-                  <span class="text-[11px] text-slate-400">${db.cnt[t.id]||0}/${quotaOf(t)} (${pctOf(t)}%)</span>
+                  <span class="text-[11px] text-slate-400">${db.cnt[t.id]||0}/${quotaOf(t)} (${pctOf(t)}%) · أسبوعي ${weekPctOf(t)}%</span>
                 </label>`).join('')}
             </div>
           </div>
@@ -3776,7 +3780,7 @@ const App = {
                     <td class="p-3.5 font-bold text-indigo-700">${esc(x.substitute)}</td>
                     <td class="p-3.5 no-print"><button onclick="App.deleteAbsent('${esc(x.date)}', ${esc(JSON.stringify(x.absent))})" title="حذف هذا الغائب (كل حصصه في هذا اليوم)" class="text-xs bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 px-2 py-0.5 rounded-lg font-semibold whitespace-nowrap">🗑️ حذف الغائب</button></td>
                   </tr>
-                `).join('') || `<tr><td colspan="6" class="p-8 text-center text-slate-400 font-medium">لا توجد سجلات في أرشيف الغياب حتى الآن.</td></tr>`}
+                `).join('') || `<tr><td colspan="7" class="p-8 text-center text-slate-400 font-medium">لا توجد سجلات في أرشيف الغياب حتى الآن.</td></tr>`}
               </tbody>
             </table>
           </div>
@@ -3798,7 +3802,7 @@ const App = {
 
     // النسبة التراكمية = كل ما أخذه المعلم منذ أول غياب مسجّل في الأرشيف ÷ الحد المسموح (العدّاد يُحسب من الأرشيف نفسه)
     const statsList = db.teachers.filter(t => t.active !== false).map(t => {   // المعلم المستثنى من الاحتياط لا يظهر في الإحصاء
-      return { teacher: t, taken: db.cnt[t.id] || 0, quota: quotaOf(t), pct: pctOf(t), subject: primarySubject(t.id) };
+      return { teacher: t, taken: db.cnt[t.id] || 0, quota: quotaOf(t), pct: pctOf(t), weekTaken: weekCountOf(t), weekPct: weekPctOf(t), subject: primarySubject(t.id) };
     }).sort((a, b) => b.pct - a.pct || a.teacher.name.localeCompare(b.teacher.name, 'ar'));
     const firstDate = (db.log || []).reduce((m, x) => (x.date && (!m || x.date < m) ? x.date : m), '');
     const resetNote = db.cntResetAt ? ' — آخر تصفير عام: ' + new Date(db.cntResetAt).toLocaleDateString('ar-OM') : '';
@@ -3831,7 +3835,9 @@ const App = {
         </div>
 
         <div class="no-print flex flex-wrap items-center gap-2 mb-4 text-sm font-semibold text-slate-600">
+          <span class="px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-bold shadow-md">📅 النسبة الأسبوعية</span>
           <span class="px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-bold shadow-md">📈 النسبة التراكمية</span>
+          <span class="text-xs">الأسبوعية تتجدد كل أحد (الأسبوع الحالي يبدأ ${currentWeekStart()})</span>
           <span>${firstDate ? 'محسوبة من أول غياب مسجّل: ' + firstDate : 'لا توجد غيابات مسجلة بعد'}${resetNote}</span>
           <button onclick="App.resetAllCounts()" class="mr-auto px-4 py-2.5 rounded-xl text-sm font-bold border border-rose-300 text-rose-700 bg-rose-50 hover:bg-rose-100" title="إعادة النسبة التراكمية لجميع المعلمين إلى 0%">♻️ تصفير النسب</button>
         </div>
@@ -3844,6 +3850,7 @@ const App = {
                 <th class="p-3.5">التخصص / المادة</th>
                 <th class="p-3.5 text-center">حصص الاحتياط المنفذة</th>
                 <th class="p-3.5 text-center">الحد المسموح</th>
+                <th class="p-3.5 text-center">📅 النسبة الأسبوعية</th>
                 <th class="p-3.5 text-center">📈 النسبة التراكمية</th>
               </tr>
             </thead>
@@ -3855,9 +3862,10 @@ const App = {
                   <td class="p-3.5 text-slate-600">${esc(st.subject)}</td>
                   <td class="p-3.5 text-center font-black text-emerald-600 text-base">${st.taken}</td>
                   <td class="p-3.5 text-center text-slate-600">${st.quota}</td>
+                  <td class="p-3.5 text-center"><span class="text-[11px] text-slate-400 ml-1">${st.weekTaken}/${st.quota}</span>${pctBadge(st.weekPct)}</td>
                   <td class="p-3.5 text-center">${pctBadge(st.pct)}</td>
                 </tr>
-              `).join('') || `<tr><td colspan="6" class="p-8 text-center text-slate-400 font-medium">لا توجد بيانات معلمين مسجلة.</td></tr>`}
+              `).join('') || `<tr><td colspan="7" class="p-8 text-center text-slate-400 font-medium">لا توجد بيانات معلمين مسجلة.</td></tr>`}
             </tbody>
           </table>
         </div>
