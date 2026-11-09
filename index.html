@@ -92,7 +92,7 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
         <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
         <div dir="ltr">📞 98986817</div>
-        <div class="text-slate-600" dir="ltr">v 2026.11.08-a</div>
+        <div class="text-slate-600" dir="ltr">v 2026.11.09-a</div>
       </div>
     </div>
   </aside>
@@ -625,16 +625,43 @@ const save = () => {
   if (cloudEndpoint()) { clearTimeout(syncTimer); syncTimer = setTimeout(pushCloud, 300); }
 };
 // عدّاد الاحتياط التراكمي يُحسب دائمًا من أرشيف الغياب (منذ أول غياب مسجّل، أو منذ آخر «تصفير»): مصدر واحد للحقيقة
+// مطابقة اسم المعلم البديل في الأرشيف: بالمعرّف (sid) أولًا ثم بالاسم بعد توحيد الهمزات والتشكيل والمسافات (لتفادي ضياع الحصص عند اختلاف كتابة الاسم بعد إعادة رفع الجدول)
+function normName(n) {
+  return String(n || '').replace(/[\u064B-\u065F\u0670\u0640]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/\s+/g, ' ').trim();
+}
+function logTeacherId(x) {
+  const ts = db.teachers || [];
+  if (x.sid != null) { const t = ts.find(t => String(t.id) === String(x.sid)); if (t) return t.id; }
+  let t = ts.find(t => t.name === x.substitute);
+  if (!t) { const nx = normName(x.substitute); t = ts.find(t => normName(t.name) === nx); }
+  if (!t) {   // نفس الكلمات بترتيب مختلف
+    const key = n => normName(n).split(' ').sort().join(' ');
+    const kx = key(x.substitute); t = ts.find(t => key(t.name) === kx);
+  }
+  return t ? t.id : null;
+}
 function recomputeCnt() {
   // «تصفير» يسجّل وقتًا (للجميع db.cntResetAt أو لمعلم واحد t.cntResetAt): تُحتسب بعده الحصص المعتمدة فقط، والأرشيف لا يُمس
   if (db.cntFrom && !db.cntResetAt) { const d = new Date(db.cntFrom + 'T00:00:00'); db.cntResetAt = isNaN(d) ? 0 : d.getTime(); }
   db.cnt = db.cnt || {};
+  const per = {};
+  (db.log || []).forEach(x => {
+    if (!x.substitute || x.substitute === 'إدارة ذاتية') return;
+    const id = logTeacherId(x); if (id == null) return;
+    (per[id] = per[id] || []).push(x);
+  });
   (db.teachers || []).forEach(t => {
     const rt = Math.max(Number(db.cntResetAt) || 0, Number(t.cntResetAt) || 0);
     const rd = rt ? new Date(rt) : null;   // (لا نستعمل localISODate هنا: تُستدعى هذه الدالة قبل تعريفها عند فتح الصفحة)
     const rIso = rd ? `${rd.getFullYear()}-${String(rd.getMonth() + 1).padStart(2, '0')}-${String(rd.getDate()).padStart(2, '0')}` : '';
-    db.cnt[t.id] = (db.log || []).filter(x => x.substitute === t.name && (!rt || (x.at ? x.at > rt : (x.date || '') > rIso))).length;
+    db.cnt[t.id] = (per[t.id] || []).filter(x => !rt || (x.at ? x.at > rt : (x.date || '') > rIso)).length;
   });
+}
+// حصص في الأرشيف لا يطابق اسم بديلها أي معلم حالي (لتنبيه المستخدم)
+function unmatchedLogNames() {
+  const m = {};
+  (db.log || []).forEach(x => { if (x.substitute && x.substitute !== 'إدارة ذاتية' && logTeacherId(x) == null) m[x.substitute] = (m[x.substitute] || 0) + 1; });
+  return m;
 }
 const key = (id, d, p) => id + '|' + d + '|' + p;
 const freeKey = (id, d, p) => id + '|' + d + '|' + p;
@@ -667,7 +694,7 @@ const weekStartISO = iso => {
 };
 // النسبة الأسبوعية: ما أخذه المعلم في الأسبوع الحالي فقط ÷ الحد المسموح، وتبدأ من الصفر كل يوم أحد
 const currentWeekStart = () => weekStartISO(localISODate(new Date()));
-const weekCountOf = (t, wk) => (db.log || []).filter(x => x.substitute === t.name && weekStartISO(x.date) === (wk || currentWeekStart())).length;
+const weekCountOf = (t, wk) => (db.log || []).filter(x => x.substitute && weekStartISO(x.date) === (wk || currentWeekStart()) && logTeacherId(x) === t.id).length;
 const weekPctOf = (t, wk) => { const q = quotaOf(t), n = weekCountOf(t, wk); return q > 0 ? Math.round((n / q) * 100) : (n > 0 ? 100 : 0); };
 const printDayName = d => d === 'الاثنين' ? 'الإثنين' : d;
 const PERIOD_ORDINALS = ['الأولى', 'الثانية', 'الثالثة', 'الرابعة', 'الخامسة', 'السادسة', 'السابعة', 'الثامنة'];
@@ -3679,6 +3706,7 @@ const App = {
         subject: row.subject,
         className: row.className,
         substitute: substitute.name,
+        sid: substitute.id,
         at: Date.now(),
         ...(db.reasonEnabled && (window.absReasons || {})[row.absentId] ? { reason: window.absReasons[row.absentId] } : {})
       });
@@ -3806,6 +3834,8 @@ const App = {
     }).sort((a, b) => b.pct - a.pct || a.teacher.name.localeCompare(b.teacher.name, 'ar'));
     const firstDate = (db.log || []).reduce((m, x) => (x.date && (!m || x.date < m) ? x.date : m), '');
     const resetNote = db.cntResetAt ? ' — آخر تصفير عام: ' + new Date(db.cntResetAt).toLocaleDateString('ar-OM') : '';
+    const lost = unmatchedLogNames();
+    const lostTotal = Object.values(lost).reduce((a, b) => a + b, 0);
     const pctBadge = v => `<span class="font-bold text-xs px-2.5 py-1 rounded-full ${v >= 100 ? 'bg-amber-100 text-amber-800' : v >= 50 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}">${v}%</span>`;
 
     $('app').innerHTML = tabsBar + `
@@ -3841,6 +3871,10 @@ const App = {
           <span>${firstDate ? 'محسوبة من أول غياب مسجّل: ' + firstDate : 'لا توجد غيابات مسجلة بعد'}${resetNote}</span>
           <button onclick="App.resetAllCounts()" class="mr-auto px-4 py-2.5 rounded-xl text-sm font-bold border border-rose-300 text-rose-700 bg-rose-50 hover:bg-rose-100" title="إعادة النسبة التراكمية لجميع المعلمين إلى 0%">♻️ تصفير النسب</button>
         </div>
+        ${lostTotal ? `<div class="no-print mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          ⚠️ في الأرشيف <b>${lostTotal}</b> حصة لبدلاء لا يطابق اسمهم أي معلم حالي، فلا تظهر في النسب: ${Object.entries(lost).map(([n, c]) => esc(n) + ' (' + c + ')').join('، ')}.
+          <div class="text-xs mt-1">غالبًا تغيّر اسم المعلم بعد إعادة رفع الجدول. أعد كتابة الاسم في «إدارة المعلمين» كما في الأرشيف، أو أخبرني لأربطها.</div>
+        </div>` : ''}
         <div class="overflow-x-auto rounded-2xl border border-slate-200 mb-8">
           <table class="w-full text-sm text-right">
             <thead>
