@@ -92,7 +92,7 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
         <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
         <div dir="ltr">📞 98986817</div>
-        <div class="text-slate-600" dir="ltr">v 2026.11.09-d</div>
+        <div class="text-slate-600" dir="ltr">v 2026.11.09-e</div>
       </div>
     </div>
   </aside>
@@ -1645,30 +1645,6 @@ const App = {
       save();
       if (this._currentPage === 'reports') this.reports('stats'); else this.page(this._currentPage || 'teachers');
     }, 'تصفير جميع المعلمين');
-  },
-
-  // رصيد سابق: حصص أخذها المعلم ولا توجد في الأرشيف (تُضاف إلى النسبة التراكمية)
-  editBase(id) {
-    const t = db.teachers.find(x => String(x.id) === String(id));
-    if (!t) return;
-    const inArch = db.cnt[t.id] - (Number(t.cntBase) || 0);
-    const v = prompt(`«${t.name}»\nالمحسوب من الأرشيف: ${inArch} حصة.\nأدخل عدد الحصص السابقة غير المسجلة في الأرشيف (تُضاف عليها):`, Number(t.cntBase) || 0);
-    if (v === null) return;
-    const n = Math.max(0, Math.floor(Number(v)));
-    if (!Number.isFinite(n)) return;
-    t.cntBase = n;
-    save();
-    this.reports('stats');
-  },
-
-  // إلغاء أي تصفير سابق: النسبة التراكمية تُحسب من كل ما في أرشيف الغياب
-  countFromArchiveStart() {
-    this.confirm('سيُلغى أي تصفير سابق للنسب، وتُحسب النسبة التراكمية لكل معلم من أول حصة مسجّلة في الأرشيف. هل تريد المتابعة؟', () => {
-      db.cntResetAt = 0; db.cntFrom = '';
-      db.teachers.forEach(t => { delete t.cntResetAt; });
-      save();
-      this.reports('stats');
-    }, 'الحساب من أول الأرشيف');
   },
 
   togglePhonesSection() {
@@ -3927,7 +3903,7 @@ const App = {
                   <td class="p-3.5 text-center font-bold text-slate-400">${idx + 1}</td>
                   <td class="p-3.5 font-bold text-slate-900">${esc(st.teacher.name)}</td>
                   <td class="p-3.5 text-slate-600">${esc(st.subject)}</td>
-                  <td class="p-3.5 text-center font-black text-emerald-600 text-base">${st.taken} <button onclick="App.editBase(${st.teacher.id})" class="no-print text-xs font-normal text-slate-400 hover:text-indigo-600" title="إضافة/تعديل حصص سابقة غير مسجلة في الأرشيف">✏️</button>${st.archiveAll > st.taken ? `<div class="text-[10px] font-semibold text-amber-600" title="هذه الحصص موجودة في الأرشيف لكنها قبل آخر تصفير للنسب فلا تُحسب">في الأرشيف ${st.archiveAll} (قبل التصفير)</div>` : ''}</td>
+                  <td class="p-3.5 text-center font-black text-emerald-600 text-base">${st.taken}${st.archiveAll > st.taken ? `<div class="text-[10px] font-semibold text-amber-600" title="هذه الحصص موجودة في الأرشيف لكنها قبل آخر تصفير للنسب فلا تُحسب">في الأرشيف ${st.archiveAll} (قبل التصفير)</div>` : ''}</td>
                   <td class="p-3.5 text-center text-slate-600">${st.quota}</td>
                   <td class="p-3.5 text-center"><span class="text-[11px] text-slate-400 ml-1">${st.weekTaken}/${st.quota}</span>${pctBadge(st.weekPct)}</td>
                   <td class="p-3.5 text-center">${pctBadge(st.pct)}</td>
