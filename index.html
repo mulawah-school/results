@@ -92,7 +92,7 @@ body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
       <div class="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 leading-relaxed">
         <div>تصميم البرنامج: <span class="text-slate-300 font-semibold">سيف المعولي</span></div>
         <div dir="ltr">📞 98986817</div>
-        <div class="text-slate-600" dir="ltr">v 2026.11.09-a</div>
+        <div class="text-slate-600" dir="ltr">v 2026.11.09-d</div>
       </div>
     </div>
   </aside>
@@ -650,11 +650,19 @@ function recomputeCnt() {
     const id = logTeacherId(x); if (id == null) return;
     (per[id] = per[id] || []).push(x);
   });
+  // ترحيل مرة واحدة: إن كان العدّاد القديم المحفوظ أكبر مما في الأرشيف (حصص قبل تفعيل الأرشيف أو مسحه) تُحفظ الفروق كـ«رصيد سابق»
+  if (!db.cntBaseDone) {
+    db.cntBaseDone = true;
+    (db.teachers || []).forEach(t => {
+      const old = Number(db.cnt[t.id]) || 0, inLog = (per[t.id] || []).length;
+      if (old > inLog && t.cntBase == null) t.cntBase = old - inLog;
+    });
+  }
   (db.teachers || []).forEach(t => {
     const rt = Math.max(Number(db.cntResetAt) || 0, Number(t.cntResetAt) || 0);
     const rd = rt ? new Date(rt) : null;   // (لا نستعمل localISODate هنا: تُستدعى هذه الدالة قبل تعريفها عند فتح الصفحة)
     const rIso = rd ? `${rd.getFullYear()}-${String(rd.getMonth() + 1).padStart(2, '0')}-${String(rd.getDate()).padStart(2, '0')}` : '';
-    db.cnt[t.id] = (per[t.id] || []).filter(x => !rt || (x.at ? x.at > rt : (x.date || '') > rIso)).length;
+    db.cnt[t.id] = (Number(t.cntBase) || 0) + (per[t.id] || []).filter(x => !rt || (x.at ? x.at > rt : (x.date || '') > rIso)).length;
   });
 }
 // حصص في الأرشيف لا يطابق اسم بديلها أي معلم حالي (لتنبيه المستخدم)
@@ -1633,10 +1641,34 @@ const App = {
   // تصفير عداد الاحتياط (النسبة) لجميع المعلمين دفعة واحدة، دون مسح سجل أرشيف الغياب
   resetAllCounts() {
     this.confirm('هل تريد تصفير عداد الاحتياط (النسبة) لجميع المعلمين وإعادتها إلى 0%؟ لا يؤثر هذا على سجل أرشيف الغياب.', () => {
-      db.cntResetAt = Date.now(); db.cntFrom = ''; db.teachers.forEach(t => { delete t.cntResetAt; });   // الأرشيف يبقى، والعدّاد يبدأ من الآن
+      db.cntResetAt = Date.now(); db.cntFrom = ''; db.teachers.forEach(t => { delete t.cntResetAt; t.cntBase = 0; });   // الأرشيف يبقى، والعدّاد يبدأ من الآن
       save();
       if (this._currentPage === 'reports') this.reports('stats'); else this.page(this._currentPage || 'teachers');
     }, 'تصفير جميع المعلمين');
+  },
+
+  // رصيد سابق: حصص أخذها المعلم ولا توجد في الأرشيف (تُضاف إلى النسبة التراكمية)
+  editBase(id) {
+    const t = db.teachers.find(x => String(x.id) === String(id));
+    if (!t) return;
+    const inArch = db.cnt[t.id] - (Number(t.cntBase) || 0);
+    const v = prompt(`«${t.name}»\nالمحسوب من الأرشيف: ${inArch} حصة.\nأدخل عدد الحصص السابقة غير المسجلة في الأرشيف (تُضاف عليها):`, Number(t.cntBase) || 0);
+    if (v === null) return;
+    const n = Math.max(0, Math.floor(Number(v)));
+    if (!Number.isFinite(n)) return;
+    t.cntBase = n;
+    save();
+    this.reports('stats');
+  },
+
+  // إلغاء أي تصفير سابق: النسبة التراكمية تُحسب من كل ما في أرشيف الغياب
+  countFromArchiveStart() {
+    this.confirm('سيُلغى أي تصفير سابق للنسب، وتُحسب النسبة التراكمية لكل معلم من أول حصة مسجّلة في الأرشيف. هل تريد المتابعة؟', () => {
+      db.cntResetAt = 0; db.cntFrom = '';
+      db.teachers.forEach(t => { delete t.cntResetAt; });
+      save();
+      this.reports('stats');
+    }, 'الحساب من أول الأرشيف');
   },
 
   togglePhonesSection() {
@@ -3830,10 +3862,10 @@ const App = {
 
     // النسبة التراكمية = كل ما أخذه المعلم منذ أول غياب مسجّل في الأرشيف ÷ الحد المسموح (العدّاد يُحسب من الأرشيف نفسه)
     const statsList = db.teachers.filter(t => t.active !== false).map(t => {   // المعلم المستثنى من الاحتياط لا يظهر في الإحصاء
-      return { teacher: t, taken: db.cnt[t.id] || 0, quota: quotaOf(t), pct: pctOf(t), weekTaken: weekCountOf(t), weekPct: weekPctOf(t), subject: primarySubject(t.id) };
+      return { teacher: t, taken: db.cnt[t.id] || 0, quota: quotaOf(t), pct: pctOf(t), weekTaken: weekCountOf(t), weekPct: weekPctOf(t), archiveAll: (db.log || []).filter(x => x.substitute && x.substitute !== 'إدارة ذاتية' && logTeacherId(x) === t.id).length, subject: primarySubject(t.id) };
     }).sort((a, b) => b.pct - a.pct || a.teacher.name.localeCompare(b.teacher.name, 'ar'));
     const firstDate = (db.log || []).reduce((m, x) => (x.date && (!m || x.date < m) ? x.date : m), '');
-    const resetNote = db.cntResetAt ? ' — آخر تصفير عام: ' + new Date(db.cntResetAt).toLocaleDateString('ar-OM') : '';
+    const resetNote = db.cntResetAt ? ' — آخر تصفير عام: ' + new Date(db.cntResetAt).toLocaleString('ar-OM') : '';
     const lost = unmatchedLogNames();
     const lostTotal = Object.values(lost).reduce((a, b) => a + b, 0);
     const pctBadge = v => `<span class="font-bold text-xs px-2.5 py-1 rounded-full ${v >= 100 ? 'bg-amber-100 text-amber-800' : v >= 50 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}">${v}%</span>`;
@@ -3869,7 +3901,8 @@ const App = {
           <span class="px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-bold shadow-md">📈 النسبة التراكمية</span>
           <span class="text-xs">الأسبوعية تتجدد كل أحد (الأسبوع الحالي يبدأ ${currentWeekStart()})</span>
           <span>${firstDate ? 'محسوبة من أول غياب مسجّل: ' + firstDate : 'لا توجد غيابات مسجلة بعد'}${resetNote}</span>
-          <button onclick="App.resetAllCounts()" class="mr-auto px-4 py-2.5 rounded-xl text-sm font-bold border border-rose-300 text-rose-700 bg-rose-50 hover:bg-rose-100" title="إعادة النسبة التراكمية لجميع المعلمين إلى 0%">♻️ تصفير النسب</button>
+          <button onclick="App.countFromArchiveStart()" class="mr-auto px-4 py-2.5 rounded-xl text-sm font-bold border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100" title="إلغاء أي تصفير سابق وحساب النسبة من أول حصة في الأرشيف">📥 احسب من أول الأرشيف</button>
+          <button onclick="App.resetAllCounts()" class="mr-2 px-4 py-2.5 rounded-xl text-sm font-bold border border-rose-300 text-rose-700 bg-rose-50 hover:bg-rose-100" title="إعادة النسبة التراكمية لجميع المعلمين إلى 0%">♻️ تصفير النسب</button>
         </div>
         ${lostTotal ? `<div class="no-print mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           ⚠️ في الأرشيف <b>${lostTotal}</b> حصة لبدلاء لا يطابق اسمهم أي معلم حالي، فلا تظهر في النسب: ${Object.entries(lost).map(([n, c]) => esc(n) + ' (' + c + ')').join('، ')}.
@@ -3894,7 +3927,7 @@ const App = {
                   <td class="p-3.5 text-center font-bold text-slate-400">${idx + 1}</td>
                   <td class="p-3.5 font-bold text-slate-900">${esc(st.teacher.name)}</td>
                   <td class="p-3.5 text-slate-600">${esc(st.subject)}</td>
-                  <td class="p-3.5 text-center font-black text-emerald-600 text-base">${st.taken}</td>
+                  <td class="p-3.5 text-center font-black text-emerald-600 text-base">${st.taken} <button onclick="App.editBase(${st.teacher.id})" class="no-print text-xs font-normal text-slate-400 hover:text-indigo-600" title="إضافة/تعديل حصص سابقة غير مسجلة في الأرشيف">✏️</button>${st.archiveAll > st.taken ? `<div class="text-[10px] font-semibold text-amber-600" title="هذه الحصص موجودة في الأرشيف لكنها قبل آخر تصفير للنسب فلا تُحسب">في الأرشيف ${st.archiveAll} (قبل التصفير)</div>` : ''}</td>
                   <td class="p-3.5 text-center text-slate-600">${st.quota}</td>
                   <td class="p-3.5 text-center"><span class="text-[11px] text-slate-400 ml-1">${st.weekTaken}/${st.quota}</span>${pctBadge(st.weekPct)}</td>
                   <td class="p-3.5 text-center">${pctBadge(st.pct)}</td>
@@ -3921,7 +3954,7 @@ const App = {
   clearLog() {
     this.confirm('هل أنت متأكد من مسح أرشيف الغياب وإعادة ضبط عدادات الاحتياط لجميع المعلمين؟', () => {
       db.log = [];
-      db.cntFrom = ''; db.cntResetAt = 0; db.teachers.forEach(t => { delete t.cntResetAt; });
+      db.cntFrom = ''; db.cntResetAt = 0; db.teachers.forEach(t => { delete t.cntResetAt; t.cntBase = 0; });
       db.teachers.forEach(t => db.cnt[t.id] = 0);
       save();
       this.reports('archive');
